@@ -1,1 +1,156 @@
-# market-board
+# 行情速览
+
+一个零构建、纯前端、可安装到主屏幕（PWA）的行情看板。自选股实时报价 + 分时图 + K 线图 + 场内 ETF 资金流监控，无账号、无后端，自选与偏好全部存在本机。
+
+## 功能
+
+- **自选看板**：A 股 / 港股 / 美股指数 / 外盘期货混合自选，涨跌幅排序、资金流排序、名称排序可切换
+- **自选增删**：底部「＋ 添加自选」直达搜索页；「编辑」进入删除态（每行左侧红 −），长按整行也能删；删除后底部浮条可**撤销**
+- **指数页**：默认 9 个品种（上证 / 纳指100 / 标普500 / 道琼斯 / 恒生科技 / COMEX黄金 / 日经225 / 韩国KOSPI / 离岸人民币），2 列卡片展示价格、涨跌与当日走势，点卡片进详情
+  - 顶栏「调整」可从 10 个候选里勾选增删，勾选结果存本地，奇数张时最后一张自动占满整行
+  - 有分钟线的画折线；日经225 / 韩国KOSPI 的数据源只给实时报价，改画「今日振幅条」（横条=最低~最高，圆点=现价，虚线=昨收），不编造走势
+- **国债页**：中国 / 美国各四档关键期限（2 / 5 / 10 / 30 年）收益率与单日 bp 变动；顶部并排两国同一期限的收益率与中美利差，**期限可切**（2 / 5 / 10 / 30 年，切换时两国数值与利差一起变，避免「10 年数字配 2 年利差」）；每组底部另给 10Y−2Y 期限利差（陡峭度）
+- **详情页**：分时、日 K、周 K、月 K，手势支持长按十字光标、双指缩放（25↔200 根）、横向平移
+  - **十字光标会接管顶部报价区**：分时上换成光标那一分钟的价格与较昨收涨跌，四格变成 均价 / 涨跌额 / 累计量 / 昨收；K 线上换成光标那根的收盘价，副行给「当日 / 当周 / 当月」涨跌幅与**距今涨跌幅**（从这根走到今天，正数=之后涨了），四格换成 开 / 高 / 低 / 量，顶部 MA5/10/20 也同步跳到光标那根。光标离开即恢复实时报价，5 秒轮询期间也不会被顶掉
+- **ETF 资金流**：四只重点 ETF（510300 / 510050 / 588000 / 510310）当日净流入、主力净额、5/10/20 日累计、连续流入流出天数，看板徽标 + 详情页柱状图
+- **搜索添加**：支持 A 股个股、场内 ETF、港股、主要指数，也可直接输入 6 位代码
+- **主题**：樱花奶油（浅） / 紫罗兰夜空（深） / 跟随系统，三态可切，首屏无白闪
+- **离线可用**：Service Worker 预缓存全部静态资源，断网仍能打开并显示上次行情
+- **中国市场配色**：红涨绿跌
+- **视觉风格（静奢可爱 / Quiet Cute）**：中性近黑底 + 发丝级 1px 描边 + 单层柔和投影，颜色只留给涨跌数据与一个低饱和樱花粉强调色；通栏毛玻璃顶栏、贴底毛玻璃 tabbar、圆润但克制的 16~18px 圆角；猫爪/爱心图标与三片慢速花瓣作为唯一的装饰
+- **字体**：数字用圆体 Quicksand（约 47KB），标题与正文走系统圆黑；「站酷快乐体」只用于空状态等俏皮文案（约 90KB），全部本地内嵌、离线可用，不请求任何外部字体 CDN
+- **图表质感**：分时图右轴只标最高/最低/昨收三个价位、面积只做一层淡渐变、成交量按桶聚合并以 97 分位裁顶；迷你走势图做降采样 + 二次贝塞尔平滑
+
+## 技术栈
+
+原生 ES Module + Canvas 2D，**没有** TypeScript、Tailwind、打包器。源码即产物，静态托管直接可用。
+
+图表全部手写：DPR 适配、对称刻度、离屏缓冲、十字光标、手势状态机，无 ECharts 依赖。
+
+## 目录结构
+
+```
+index.html              单页外壳（四页常驻 DOM + 详情覆盖层）
+manifest.webmanifest    PWA 清单（含自选 / 指数两个快捷方式）
+sw.js                   Service Worker（静态预缓存 / API 直连 / 导航回退）
+css/
+  tokens.css            design tokens（紫罗兰夜空默认 + 樱花奶油覆盖）
+  base.css              reset、骨架、tabbar、toast、底部动作面板
+  pages.css             各页面与组件样式
+js/
+  main.js               入口：路由注册、tabbar、下拉刷新、SW 注册
+  core/                 store（localStorage）、poller、bus、router
+  data/                 symbols、http、quotes、series、flows
+    sources/            tencent、sinaFlow、sinaGold、search
+  chart/                base、trend、kline、flowbar、spark（卡片迷你走势）
+  market/session.js     交易时段、时区、休市判定
+  ui/                   board、indices、detail、flow、search、settings、ticker、toast、pullRefresh
+  util/                 format、dom
+  dev/selftest.js       数据源链路自检（?debug=1）
+scripts/
+  devserver.py          无缓存开发服务器（多线程）
+  gen-icons.py          纯标准库 PNG 图标生成（旧版折线图标，保留作离线兜底）
+  render-icons.py       用本机 Chrome 渲染 SVG 图标（猫头 + 折线，抗锯齿更好）
+  make-cute-font.py     把站酷快乐体按项目用到的字子集化成 woff2
+assets/icons/           SVG + 各尺寸 PNG（含 maskable）
+assets/fonts/           Quicksand 3 个字重 + 子集化快乐体（cute.woff2）
+```
+
+## 本地开发
+
+```bash
+python scripts/devserver.py 5173
+# 打开 http://127.0.0.1:5173/index.html
+```
+
+必须用这个脚本，不要用 `python -m http.server`：
+
+1. 它强制 `Cache-Control: no-store`，避免改了代码浏览器还在跑旧 JS；
+2. 它用多线程服务器，单线程会在浏览器并发拉取 30 多个 ES Module 时被堵死。
+
+调试辅助：
+
+- `?debug=1` 自动打开数据源自检面板
+- `?sw=1` 在本地也注册 Service Worker（默认本地跳过，避免缓存干扰调试）
+- 设置页「数据源自检」可随时跑一次 9 项链路体检
+
+重新生成图标（改配色或造型后跑一次）：
+
+```bash
+python scripts/render-icons.py     # 需要 pip install playwright，用本机已装的 Chrome
+python scripts/gen-icons.py        # 无依赖兜底版
+```
+
+改了界面文案、新增汉字后，刷新字体子集，避免出现豆腐块：
+
+```bash
+python scripts/make-cute-font.py .dev/fonts/zcool.ttf
+```
+
+子集脚本会扫描 `index.html` / `js` / `css` / `manifest.webmanifest` 里出现的所有汉字，
+再加上一份常用字兜底表，输出 `assets/fonts/cute.woff2`（当前约 90KB）。
+
+## 部署
+
+静态托管即可（Nginx / OSS / CDN / GitHub Pages / Vercel 均可），没有构建步骤，也不需要任何环境变量。
+
+要点：
+
+- **必须是 HTTPS**：PWA 安装与 Service Worker 都要求安全上下文（localhost 除外）
+- 需要整站根路径可访问，`sw.js` 与 `manifest.webmanifest` 必须在站点根目录（SW 的 scope 受脚本路径限制）
+- 每次发版记得同步修改 `sw.js` 里的 `VERSION`，否则客户端不会拿到新缓存
+
+## 数据源
+
+全部为公开接口，无需申请 key。行情数据仅供参考。
+
+| 用途 | 接口 | 说明 |
+|---|---|---|
+| 批量报价 | `qt.gtimg.cn/q=` | GBK 编码，有 CORS 头 |
+| A 股/港股分时 | `web.ifzq.gtimg.cn/appstock/app/minute/query` | |
+| 美股指数分时 | `.../usMinute/query` | 美股必须走这个端点，普通 `minute` 只返 1 条 |
+| A 股 K 线 | `.../fqkline/get` | 键名 `qfqday` |
+| 美股 K 线 | `.../usfqkline/get` | 键名 `day`/`week`/`month` |
+| 黄金分时/日 K | 新浪 `GlobalFuturesService` | 腾讯 `hf_` 系列对 `hf_GC` 不可用 |
+| ETF 资金流 | 新浪 `MoneyFlow.ssl_qsfx_zjlrqs` | 腾讯 `ff_` 对 ETF 返回 `pv_none_match` |
+| 搜索建议 | 腾讯 `smartbox.gtimg.cn` + 新浪 `suggest3.sinajs.cn` | 东财 searchapi 无 CORS，浏览器拿不到 |
+| 日经225 / 韩国KOSPI | CNBC `quote.cnbc.com/quote-html-webservice/restQuote`（东财 `push2` 为备源） | 腾讯没有日韩指数 code；新浪 `int_nikkei` 已停更（报 44,946，真实 65,000+）；东财 `push2.eastmoney.com` 在部分网络整域不可达（同域 `datacenter` 却正常），故换 CNBC：公开 JSON、`Access-Control-Allow-Origin: *`、无需 Key/Referer。字段是带千分位的字符串，需自行剥壳 |
+| 离岸人民币 USD/CNH | 新浪 `NewForexService.getMinKline` | `hq.sinajs.cn` 有 Referer 防盗链（只放行 sina 域名），改不出来，改用不校验来源的 JSONP 服务 |
+| 中美国债收益率 | 东财 `datacenter.eastmoney.com/api/data/get`（`type=RPTA_WEB_TREASURYYIELD`） | 返回 `Access-Control-Allow-Origin: *`，浏览器可直连；一个请求同时给出中债与美债的 2/5/10/30 年及 10Y−2Y 利差。日频、T+1 |
+
+设计上的取舍：
+
+- **统一 symbol 主键直接复用腾讯 code**（`sh600519` / `hk00700` / `usNDX` / `hf_GC`），省掉一层映射
+- **时区一律用 `Intl.DateTimeFormat` 取交易所当地墙钟**，绝不用 `new Date().toLocaleString()`（会二次转时区）
+- **分时图 X 轴用索引轴而非时间轴**，规避 A 股午休、港股半日市、美股夏令时造成的拉伸
+- **休市用启发式判定**：接口仍报「开市」但行情时间落后超过 10 分钟，即判为已收盘，免维护节假日表
+- **节流合并**：250ms 合并窗口、同源最小间隔 1.2s、单批 ≤ 40 标的、页面隐藏即停轮询
+- **新源失败退避**：东财 / 新浪外汇连续失败时按 5s→10s→20s→40s→60s 退避，避免不可达时每次轮询都等满超时把刷新拖死
+- **外汇的「当日」按最近 24 小时滑动窗口算**：交易日按纽约 17:00（北京 05:00）切换，按自然日切会让当日涨跌退化成半夜几小时的波动（实测恒为 `-0.00%`）
+- **国债不走实时轮询**：日频宏观数据每天只更新一次，单独做 10 分钟缓存的模块，混进 3 秒一轮的行情队列只会白烧请求
+- **国债页不放收益率曲线图**：双 Y 轴下两国的曲线交叉点没有经济含义，图上无论怎么标注都容易被读成「中国=美国」，干脆只留可逐条核对的数字表；期限对比交给顶部可切的 Hero 与 4 档列表
+
+## 资金流口径
+
+> 净流入 = 主动买入额 − 主动卖出额；主力净额为**特大单**口径（新浪）。
+
+两点必须说明：
+
+1. **不等同于 ETF 真实申赎**。该数据由逐笔成交推断，是盘口推断值，不是基金公司披露的申购赎回清单。
+2. **口径与东财不同**。东财「主力净流入」是大单 + 超大单，新浪是特大单，个别标的会出现方向相反的情况。本站全站统一新浪口径，不混算。
+
+另外，510300 与 588000 规模相差约 10 倍，绝对金额不可横向比较，故同时给出「净流入率」。
+
+## 已知限制
+
+- 报价为免费接口，通常延迟数秒到十几秒，非 Level-2 实时行情
+- 美股指数只有指数点位，无盘前盘后连续竞价明细
+- `hf_GC` 只能取新浪的黄金分时与日 K，无分钟级 K 线
+- 场外基金、美股个股、板块暂不支持搜索添加
+- 国债收益率为日频且 T+1，节假日不更新；中国口径是银行间国债到期收益率，与美国恒定到期收益率不完全同源
+- 自选上限 50 个
+- 首次打开需要联网拉一次数据；之后断网可打开但数据为上次快照
+
+## 免责声明
+
+本项目仅用于个人学习与技术验证。所有行情数据来自第三方公开接口，可能存在延迟、中断或错误，**不构成任何投资建议**。据此操作，风险自担。数据接口非授权商用，如不可用请稍后重试。

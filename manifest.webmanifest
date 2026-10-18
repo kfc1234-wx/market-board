@@ -1,0 +1,53 @@
+{
+  "name": "行情速览 · 自选股与ETF资金流",
+  "short_name": "行情速览",
+  "description": "A股、美股指数、港股、COMEX黄金与ETF资金流的实时看板",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0E0D12",
+  "theme_color": "#0E0D12",
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "自选",
+      "short_name": "自选",
+      "url": "./index.html#/board"
+    },
+    {
+      "name": "指数行情",
+      "short_name": "指数",
+      "url": "./index.html#/indices"
+    }
+  ],
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
