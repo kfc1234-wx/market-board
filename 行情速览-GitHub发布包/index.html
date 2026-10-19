@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>行情速览</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0E0D12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F4F0" media="(prefers-color-scheme: light)">
+<meta name="description" content="A股 / 美股指数 / 港股 / COMEX黄金 / ETF资金流 / 中美国债收益率 实时看板">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="行情速览">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-180.png">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pages.css">
+<script>
+  // 首屏前确定主题，避免白闪。默认深色；仅当用户显式选「浅色」或「跟随系统且系统为浅色」时才用浅色
+  (function () {
+    var theme = 'dark';
+    try {
+      var raw = localStorage.getItem('stk.watch.v1');
+      var saved = raw ? (JSON.parse(raw).prefs || {}).theme : null;
+      if (saved === 'light') theme = 'light';
+      else if (saved === 'auto') {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+    } catch (e) { /* 忽略，保持深色 */ }
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- 飘落的花瓣（纯装饰，不可交互） -->
+  <div class="petals" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <!-- ======== 自选看板 ======== -->
+  <section class="page" id="page-board" data-page="board">
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>行情速览</h1>
+        <span class="topbar__status" id="board-status">连接中</span>
+      </div>
+      <div class="topbar__acts">
+        <button class="iconbtn" id="board-sort" type="button" aria-label="切换排序">
+          <span class="iconbtn__text" id="board-sort-label">涨跌幅</span>
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="textbtn" id="board-edit" type="button" aria-label="编辑自选">编辑</button>
+      </div>
+    </header>
+    <div class="pull" id="pull-indicator"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="board" id="board-list">
+      <!-- 骨架 -->
+      <div class="skel">
+        <div class="skel__row"></div><div class="skel__row"></div><div class="skel__row"></div>
+        <div class="skel__row"></div><div class="skel__row"></div><div class="skel__row"></div>
+        <div class="skel__row"></div><div class="skel__row"></div>
+      </div>
+    </div>
+    <div class="board__empty" id="board-empty" hidden>
+      <p class="board__empty-title">还没有自选喵</p>
+      <p class="board__empty-sub">去搜索页牵几个指数、个股或 ETF 回来吧</p>
+      <button class="btn btn--primary" id="board-empty-btn" type="button">去逛逛</button>
+    </div>
+  </section>
+
+  <!-- ======== 指数（可自选增删） ======== -->
+  <section class="page" id="page-indices" data-page="indices" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>指数行情</h1>
+        <span class="topbar__status" id="indices-status">连接中</span>
+      </div>
+      <div class="topbar__acts">
+        <button class="iconbtn" id="idx-add" type="button" aria-label="调整指数">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span class="iconbtn__text">调整</span>
+        </button>
+      </div>
+    </header>
+    <div class="pull" id="indices-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="scroll idxscroll" id="indices-list"></div>
+  </section>
+
+  <!-- ======== 国债收益率（中美） ======== -->
+  <section class="page" id="page-bonds" data-page="bonds" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>国债收益率</h1>
+        <span class="topbar__status" id="bonds-status">连接中</span>
+      </div>
+    </header>
+    <div class="pull" id="bonds-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="scroll bondscroll" id="bonds-body"></div>
+  </section>
+
+  <!-- ======== 国家队追踪 ======== -->
+  <section class="page" id="page-nteam" data-page="nteam" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>国家队追踪</h1>
+        <span class="topbar__status" id="nteam-status">连接中</span>
+      </div>
+      <div class="topbar__acts">
+        <button class="textbtn" id="nteam-edit" type="button" aria-label="编辑国家队">编辑</button>
+      </div>
+    </header>
+    <div class="pull" id="nteam-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="board" id="nteam-list"></div>
+    <div class="nte-sum" id="nteam-sum" hidden>
+      <div class="nte-sum__cell"><strong class="nte-sum__val" id="nteam-vol">--</strong><span class="nte-sum__note" id="nteam-volnote">今日合计成交量</span></div>
+      <div class="nte-sum__sep"></div>
+      <div class="nte-sum__cell"><strong class="nte-sum__val" id="nteam-flow">--</strong><span class="nte-sum__note" id="nteam-flownote">资金量汇总</span></div>
+    </div>
+  </section>
+
+  <!-- ======== 搜索 ======== -->
+  <section class="page" id="page-search" data-page="search" hidden>
+    <header class="topbar topbar--search">
+      <div class="searchbar">
+        <svg class="searchbar__icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M13.5 13.5L17 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <input id="search-input" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="搜索代码 / 名称，如 588000、沪深300">
+        <button class="searchbar__clear" id="search-clear" type="button" aria-label="清空" hidden>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="search" id="search-body"></div>
+  </section>
+
+  <!-- ======== 设置 ======== -->
+  <section class="page" id="page-settings" data-page="settings" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>设置</h1>
+        <span class="topbar__status" data-live="0">偏好只存在这台手机</span>
+      </div>
+      <div class="topbar__acts"><span class="verpill">v1.18</span></div>
+    </header>
+    <div class="settings" id="settings-body"></div>
+  </section>
+
+  <!-- ======== 详情（覆盖层） ======== -->
+  <section class="detail" id="page-detail" data-page="detail" hidden>
+    <div class="detail__body" id="detail-body"></div>
+  </section>
+
+  <!-- ======== 底部导航 ======== -->
+  <nav class="tabbar" id="tabbar" aria-label="主导航">
+    <button class="tabbar__item is-active" data-tab="board" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 20.5c-.47 0-.9-.16-1.27-.46C6 16.1 2.9 13.1 2.9 9.4c0-2.85 2.15-4.95 4.9-4.95 1.68 0 3.18.74 4.2 1.98 1.02-1.24 2.52-1.98 4.2-1.98 2.75 0 4.9 2.1 4.9 4.95 0 3.7-3.1 6.7-7.83 10.64-.37.3-.8.46-1.27.46z" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linejoin="round"/></svg>
+      <span>自选</span>
+    </button>
+    <button class="tabbar__item" data-tab="indices" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.4 17.4l4.85-5.75a1 1 0 0 1 1.53-.04l2.83 2.9a1 1 0 0 0 1.47-.06L19.4 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19.7" cy="8.1" r="2" fill="currentColor"/></svg>
+      <span>指数</span>
+    </button>
+    <button class="tabbar__item" data-tab="bonds" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4.2 19.2v-4.6M9.4 19.2v-7.6M14.6 19.2v-5.4M19.8 19.2V6.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+      <span>国债</span>
+    </button>
+    <button class="tabbar__item" data-tab="nteam" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.8l7.4 3v5.4c0 4.6-3.1 8.3-7.4 10-4.3-1.7-7.4-5.4-7.4-10V5.8l7.4-3z" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linejoin="round"/><path d="M8.9 12l2.2 2.2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>国家队</span>
+    </button>
+    <button class="tabbar__item" data-tab="search" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" fill="none" stroke="currentColor" stroke-width="2.05"/><path d="M15.8 15.8l4.9 4.9" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round"/></svg>
+      <span>搜索</span>
+    </button>
+    <button class="tabbar__item" data-tab="settings" type="button">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><ellipse cx="12" cy="16.4" rx="5.4" ry="4.4" fill="currentColor"/><ellipse cx="5.8" cy="11" rx="2.15" ry="2.55" fill="currentColor"/><ellipse cx="10.05" cy="7" rx="2.15" ry="2.65" fill="currentColor"/><ellipse cx="13.95" cy="7" rx="2.15" ry="2.65" fill="currentColor"/><ellipse cx="18.2" cy="11" rx="2.15" ry="2.55" fill="currentColor"/></svg>
+      <span>设置</span>
+    </button>
+  </nav>
+
+  <!-- ======== 指数选择抽屉 ======== -->
+  <div class="ipicker" id="idx-picker" hidden>
+    <div class="ipicker__sheet" role="dialog" aria-modal="true" aria-label="选择要显示的指数">
+      <div class="ipicker__head">
+        <div class="ipicker__title">
+          <h2>我的指数</h2>
+          <p>勾选后立即显示在指数页</p>
+        </div>
+        <button class="ipicker__done" id="idx-picker-done" type="button">完成</button>
+      </div>
+      <div class="ipicker__list" id="idx-picker-list"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-host" id="toast-host"></div>
+<div class="update-bar" id="update-bar" hidden>
+  <span>有新版本可用</span>
+  <button type="button" id="update-btn">立即刷新</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
