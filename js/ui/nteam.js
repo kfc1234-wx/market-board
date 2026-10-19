@@ -20,6 +20,7 @@ import { getFlow, getLiveFlow } from '../data/flows.js';
 import { tickTo, setText } from './ticker.js';
 import { actionSheet, toast, snackbar } from './toast.js';
 import { effectiveState, stateText } from '../market/session.js';
+import { Distribution } from './distribution.js';
 
 const QUOTE_MS = 15 * 1000;
 
@@ -49,6 +50,12 @@ export class NTeam {
     this.flowLoading = false;
     this.flowTimer = 0;
 
+    /** 底部全 A 涨跌分布卡片（跨 rerender 复用同一个节点，避免重复建 DOM） */
+    this.distSlot = null;
+    this.dist = null;
+    this.onVisible = () => { if (!document.hidden) this.dist?.resume(); };
+    document.addEventListener('visibilitychange', this.onVisible);
+
     this.editBtn?.addEventListener('click', () => this.toggleEdit());
     this.unsubStore = subscribe(type => {
       if (type === 'nteam') this.rerender();
@@ -61,12 +68,14 @@ export class NTeam {
     this.refreshNow();
     this.scheduleQuotes();
     this.scheduleFlowRefresh();
+    this.dist?.start();
   }
 
   stop() {
     this.active = false;
     clearTimeout(this.timer);
     clearTimeout(this.flowTimer);
+    this.dist?.stop();
     if (this.editing) this.toggleEdit(false);
   }
 
@@ -75,6 +84,7 @@ export class NTeam {
     this.flows.clear();
     this.liveFlow.clear();
     this.rerender();
+    this.dist?.load(true);
     return Promise.all([this.refreshQuotes(true), this.loadFlows(true)]);
   }
 
@@ -115,6 +125,7 @@ export class NTeam {
           onclick: () => this.onAdd(),
         }),
       ]));
+      this.listEl.appendChild(this.mountDist());
       return;
     }
 
@@ -167,6 +178,21 @@ export class NTeam {
         + '</span><span>添加标的</span>',
       onclick: () => this.onAdd(),
     }));
+
+    this.listEl.appendChild(this.mountDist());
+  }
+
+  /**
+   * 挂载底部涨跌分布卡片。
+   * 节点跨 rerender 复用：clear(listEl) 只把节点摘下来，
+   * 卡片内部的 DOM 和数据都还在，下次直接 append 回去即可，不必重建。
+   */
+  mountDist() {
+    if (!this.distSlot) {
+      this.distSlot = h('div.dist-slot');
+      this.dist = new Distribution(this.distSlot);
+    }
+    return this.distSlot;
   }
 
   deleteItem(item) {
@@ -394,6 +420,7 @@ export class NTeam {
 
   destroy() {
     this.stop();
+    document.removeEventListener('visibilitychange', this.onVisible);
     this.unsubStore?.();
   }
 }

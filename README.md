@@ -6,13 +6,16 @@
 
 - **自选看板**：A 股 / 港股 / 美股指数 / 外盘期货混合自选，涨跌幅排序、资金流排序、名称排序可切换
 - **自选增删**：底部「＋ 添加自选」直达搜索页；「编辑」进入删除态（每行左侧红 −），长按整行也能删；删除后底部浮条可**撤销**
-- **指数页**：默认 9 个品种（上证 / 纳指100 / 标普500 / 道琼斯 / 恒生科技 / COMEX黄金 / 日经225 / 韩国KOSPI / 离岸人民币），2 列卡片展示价格、涨跌与当日走势，点卡片进详情
-  - 顶栏「调整」可从 10 个候选里勾选增删，勾选结果存本地，奇数张时最后一张自动占满整行
-  - 有分钟线的画折线；日经225 / 韩国KOSPI 的数据源只给实时报价，改画「今日振幅条」（横条=最低~最高，圆点=现价，虚线=昨收），不编造走势
+- **指数页**：默认 12 个品种（上证 / 纳指100 / 标普500 / 道琼斯 / 恒生科技 / 现货黄金 / 人民币账户黄金 / 布伦特原油 / 美元指数 / 日经225 / 韩国KOSPI / 离岸人民币），2 列卡片展示价格、涨跌与当日走势，点卡片进详情
+  - 顶栏「调整」可从 15 个候选里勾选增删，勾选结果存本地，奇数张时最后一张自动占满整行
+  - 有分钟线的画折线；日经225 / 韩国KOSPI / 美元指数的数据源只给实时报价，改画「今日振幅条」（横条=最低~最高，圆点=现价，虚线=昨收），不编造走势
 - **国债页**：中国 / 美国各四档关键期限（2 / 5 / 10 / 30 年）收益率与单日 bp 变动；顶部并排两国同一期限的收益率与中美利差，**期限可切**（2 / 5 / 10 / 30 年，切换时两国数值与利差一起变，避免「10 年数字配 2 年利差」）；每组底部另给 10Y−2Y 期限利差（陡峭度）
 - **详情页**：分时、日 K、周 K、月 K，手势支持长按十字光标、双指缩放（25↔200 根）、横向平移
   - **十字光标会接管顶部报价区**：分时上换成光标那一分钟的价格与较昨收涨跌，四格变成 均价 / 涨跌额 / 累计量 / 昨收；K 线上换成光标那根的收盘价，副行给「当日 / 当周 / 当月」涨跌幅与**距今涨跌幅**（从这根走到今天，正数=之后涨了），四格换成 开 / 高 / 低 / 量，顶部 MA5/10/20 也同步跳到光标那根。光标离开即恢复实时报价，5 秒轮询期间也不会被顶掉
 - **ETF 资金流**：四只重点 ETF（510300 / 510050 / 588000 / 510310）当日净流入、主力净额、5/10/20 日累计、连续流入流出天数，看板徽标 + 详情页柱状图
+- **国家队追踪页**：独立于自选、可单独增删的第二份清单，专盯国家队常买的宽基 ETF；底部汇总清单内标的的当日合计成交量与 ETF 净流入（15s 实时口径），可编辑 / 长按删除 / 删除后撤销
+  - 清单下方是 **全 A 涨跌分布** 卡片：中位涨跌幅（全市场个股涨跌幅排序取中位，即通达信 880009「全 A 中位指数」的单日口径，比上证更能反映手里股票的真实冷暖）+ 10 档家数（涨停 / >7% / 5~7% / 3~5% / 0~3% 与跌停 / <-7% / 5~7% / 3~5% / 0~3% 左右对称），配顶部涨/平/跌比例带
+  - 盘中 30 秒自动刷新，卡片右上角标快照时间；收盘后数据不再变化，自动降到 30 分钟一次
 - **搜索添加**：支持 A 股个股、场内 ETF、港股、主要指数，也可直接输入 6 位代码
 - **主题**：樱花奶油（浅） / 紫罗兰夜空（深） / 跟随系统，三态可切，首屏无白闪
 - **离线可用**：Service Worker 预缓存全部静态资源，断网仍能打开并显示上次行情
@@ -40,11 +43,12 @@ css/
 js/
   main.js               入口：路由注册、tabbar、下拉刷新、SW 注册
   core/                 store（localStorage）、poller、bus、router
-  data/                 symbols、http、quotes、series、flows
-    sources/            tencent、sinaFlow、sinaGold、search
+  data/                 symbols、http、quotes、series、flows、bonds、breadth（全 A 涨跌分布）
+    pool-a.js           全 A 代码表静态快照（5574 只，供 breadth 批量取数，按需动态加载）
+    sources/            tencent、sinaFlow、sinaFx、sinaGold、emGlobal、cnbcGlobal、search
   chart/                base、trend、kline、flowbar、spark（卡片迷你走势）
   market/session.js     交易时段、时区、休市判定
-  ui/                   board、indices、detail、flow、search、settings、ticker、toast、pullRefresh
+  ui/                   board、indices、bonds、nteam、distribution、detail、flow、search、settings、ticker、toast、pullRefresh
   util/                 format、dom
   dev/selftest.js       数据源链路自检（?debug=1）
 scripts/
@@ -72,7 +76,7 @@ python scripts/devserver.py 5173
 
 - `?debug=1` 自动打开数据源自检面板
 - `?sw=1` 在本地也注册 Service Worker（默认本地跳过，避免缓存干扰调试）
-- 设置页「数据源自检」可随时跑一次 9 项链路体检
+- 设置页「数据源自检」可随时跑一次全链路体检
 
 重新生成图标（改配色或造型后跑一次）：
 
@@ -111,11 +115,14 @@ python scripts/make-cute-font.py .dev/fonts/zcool.ttf
 | 美股指数分时 | `.../usMinute/query` | 美股必须走这个端点，普通 `minute` 只返 1 条 |
 | A 股 K 线 | `.../fqkline/get` | 键名 `qfqday` |
 | 美股 K 线 | `.../usfqkline/get` | 键名 `day`/`week`/`month` |
-| 黄金分时/日 K | 新浪 `GlobalFuturesService` | 腾讯 `hf_` 系列对 `hf_GC` 不可用 |
+| 外盘期货分时/日 K | 新浪 `GlobalFuturesService` | 现货黄金 `XAU`、布伦特 `OIL`、纳指期货 `NQ`；腾讯 `hf_` 系列没有 kline 接口 |
+| 人民币账户黄金 | 新浪 `NewForexService.getMinKline?symbol=fx_sxaucny` | 上游是「元/盎司」，除以金衡盎司 31.1034768 折成 元/克；无 1440 周期，日 K 由 4 小时线在本地合并 |
+| 美元指数 | CNBC `.DXY`（东财 `100.UDI` 为备源） | 腾讯 / 新浪 hq 都没有可用的美元指数 code；新浪 `DINIW` 有数据但只能带 Referer 取，浏览器过不去 |
 | ETF 资金流 | 新浪 `MoneyFlow.ssl_qsfx_zjlrqs` | 腾讯 `ff_` 对 ETF 返回 `pv_none_match` |
 | 搜索建议 | 腾讯 `smartbox.gtimg.cn` + 新浪 `suggest3.sinajs.cn` | 东财 searchapi 无 CORS，浏览器拿不到 |
 | 日经225 / 韩国KOSPI | CNBC `quote.cnbc.com/quote-html-webservice/restQuote`（东财 `push2` 为备源） | 腾讯没有日韩指数 code；新浪 `int_nikkei` 已停更（报 44,946，真实 65,000+）；东财 `push2.eastmoney.com` 在部分网络整域不可达（同域 `datacenter` 却正常），故换 CNBC：公开 JSON、`Access-Control-Allow-Origin: *`、无需 Key/Referer。字段是带千分位的字符串，需自行剥壳 |
 | 离岸人民币 USD/CNH | 新浪 `NewForexService.getMinKline` | `hq.sinajs.cn` 有 Referer 防盗链（只放行 sina 域名），改不出来，改用不校验来源的 JSONP 服务 |
+| 全 A 涨跌分布 | 腾讯 `qt.gtimg.cn/q=s_...` 批量精简行情 + 本地统计 | 通达信 880009 走私有 TCP 协议（7709 端口），腾讯 / 新浪 / 东财的 HTTP 行情源一律不收录 880 段（实测 `pv_none_match`、空串）。改为内置全 A 代码表（`pool-a.js`，5574 只静态快照）+ 12 批批量报价（每批 500 只）在本地分档统计，gzip 后约 180KB/轮 |
 | 中美国债收益率 | 东财 `datacenter.eastmoney.com/api/data/get`（`type=RPTA_WEB_TREASURYYIELD`） | 返回 `Access-Control-Allow-Origin: *`，浏览器可直连；一个请求同时给出中债与美债的 2/5/10/30 年及 10Y−2Y 利差。日频、T+1 |
 
 设计上的取舍：
@@ -145,9 +152,12 @@ python scripts/make-cute-font.py .dev/fonts/zcool.ttf
 
 - 报价为免费接口，通常延迟数秒到十几秒，非 Level-2 实时行情
 - 美股指数只有指数点位，无盘前盘后连续竞价明细
-- `hf_GC` 只能取新浪的黄金分时与日 K，无分钟级 K 线
+- 外盘期货只有分时与日 K，周/月 K 由日线在本地聚合
+- 人民币账户黄金为「国际金价 × 人民币汇率」折算值，不含银行买卖点差，与手机银行通常差 0.5~1 元/克
+- 美元指数（CNBC）只有实时报价，没有分时与 K 线
 - 场外基金、美股个股、板块暂不支持搜索添加
 - 国债收益率为日频且 T+1，节假日不更新；中国口径是银行间国债到期收益率，与美国恒定到期收益率不完全同源
+- 全 A 涨跌分布为本地按腾讯报价现算，口径贴近但不完全等同通达信 880009：含 ST 股（通达信中位指数剔除 ST）、涨跌停按「现价 = 涨停价」判定而非按涨幅（昨收 10.03 的涨停板涨幅只有 9.97%，按 ≥9.98% 筛会漏）、代码表是静态快照，新股上市后需重新生成 `pool-a.js`
 - 自选上限 50 个
 - 首次打开需要联网拉一次数据；之后断网可打开但数据为上次快照
 

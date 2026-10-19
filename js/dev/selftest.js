@@ -7,6 +7,7 @@ import { fetchGoldMinute } from '../data/sources/sinaGold.js';
 import { fetchFxQuoteAndMinute } from '../data/sources/sinaFx.js';
 import { fetchCnbcGlobal } from '../data/sources/cnbcGlobal.js';
 import { fetchFlow } from '../data/sources/sinaFlow.js';
+import { getBreadth } from '../data/breadth.js';
 import { getItems } from '../core/store.js';
 
 const time = async fn => {
@@ -115,6 +116,18 @@ export async function runSelfTest() {
       // 这里的 yi 是「当日」净流入，括号里只说明取到了多少天，避免被读成 5 日累计
       out.push(row(1, `新浪·资金流 ${id.slice(2)}`, `${last.date} 当日净流入 ${yi} 亿 · 取到 ${r.value.length} 日`, r.ms));
     }
+  }
+
+  // 9) 全 A 涨跌分布（腾讯批量精简行情 + 本地分档）
+  const rb = await time(() => getBreadth({ force: true }));
+  if (rb.error) {
+    out.push(row(0, '腾讯·全A涨跌分布', `失败：${rb.error.message || rb.error}`, rb.ms));
+  } else {
+    const d = rb.value;
+    const b = d.buckets;
+    // 家数明显偏少说明代码表或某几批请求掉了，标 FAIL 而不是给个看起来正常的假数
+    out.push(row(d.total > 4000 ? 1 : 0, '腾讯·全A涨跌分布',
+      `${d.total} 只 · 中位 ${d.median.toFixed(2)}% · 涨停 ${b.zt} / 跌停 ${b.dt}`, rb.ms));
   }
 
   return out;

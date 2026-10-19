@@ -1423,6 +1423,22 @@
   background: var(--tag-usbond-bg);
 }
 
+/* 数据日期：两国发布节奏不同（美国 T+1），各自标出来 */
+.bcard__date {
+  flex: 0 0 auto;
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  color: var(--text-3);
+}
+/* 比另一方旧一个交易日：换成「延后」色，避免被当成卡住没刷新 */
+.bcard__date.is-lag {
+  color: var(--warn);
+  opacity: .9;
+}
+
 /* ---- 期限切换（Hero 内） ---- */
 .bterms {
   display: flex;
@@ -1635,3 +1651,152 @@
   border-color: var(--line);
   font-weight: 500;
 }
+
+/* ============================================================
+   全 A 涨跌分布（国家队页底部）
+   左右对称：左绿（跌）右红（涨），条从中线向外生长
+   ============================================================ */
+.dist-slot { padding-bottom: 6px; }
+
+.dist {
+  margin: 4px var(--gutter) 10px;
+  padding: 13px 14px 11px;
+  border-radius: var(--radius);
+  background: var(--card-grad);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card), var(--hl);
+}
+
+.dist__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dist__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+.dist__meta {
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.dist__median {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 7px;
+}
+.dist__median-k {
+  font-size: 10.5px;
+  color: var(--text-3);
+  flex: none;
+}
+.dist__median-v {
+  font-family: var(--font-num);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.dist__median-tag {
+  font-size: 9.5px;
+  color: var(--text-3);
+  margin-left: auto;
+  flex: none;
+}
+
+/* 涨/平/跌 比例带 */
+.dist__split {
+  display: flex;
+  gap: 1.5px;
+  height: 7px;
+  margin-top: 11px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--bg-elev-2);
+}
+.dist__seg {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  transition: flex-grow .35s ease;
+}
+.dist__seg--up { background: var(--up); }
+.dist__seg--flat { background: var(--flat); }
+.dist__seg--dn { background: var(--down); }
+
+.dist__legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 10.5px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.dist__lg--up { color: var(--up); }
+.dist__lg--flat { color: var(--text-3); }
+.dist__lg--dn { color: var(--down); }
+
+/* 10 档对称条形 */
+.dist__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.dist__row {
+  display: grid;
+  grid-template-columns: 32px 1fr 44px 44px 1fr 32px;
+  align-items: center;
+  gap: 5px;
+}
+.dist__num {
+  font-family: var(--font-num);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dist__num--dn { color: var(--down); text-align: right; }
+.dist__num--up { color: var(--up); text-align: left; }
+
+.dist__track {
+  display: flex;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--bg-elev-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03);
+  overflow: hidden;
+}
+.dist__track--l { justify-content: flex-end; }
+.dist__track--r { justify-content: flex-start; }
+
+.dist__bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width .35s ease;
+}
+.dist__bar--dn { background: var(--down); }
+.dist__bar--up { background: var(--up); }
+
+.dist__label {
+  font-size: 10.5px;
+  color: rgba(52, 192, 138, .72);
+  text-align: center;
+  white-space: nowrap;
+}
+/* 右侧（涨）标签染成红系：左右档位文字可能完全一样（5~7% / 3~5%），
+   靠颜色分边比加分隔符更省地方 */
+.dist__label--r { color: rgba(255, 111, 127, .72); }
+
+.dist__seg[hidden],
+.dist__bar[hidden] { display: none; }

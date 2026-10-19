@@ -165,9 +165,16 @@ export class Bonds {
       h('span.brow__chg.brow__chg--hint', { text: '期限利差' }),
     ]));
 
+    // 该国的数据日期。两国发布节奏不同（美国 T+1），日期不一致时得写明白，
+    // 否则用户会以为美国那半张卡是坏的 / 卡住没刷新。
+    const dateEl = h('span.bcard__date', { text: '' });
+    if (isCn) this.cnDateEl = dateEl;
+    else this.usDateEl = dateEl;
+
     return h('section.bcard', {}, [
       h('div.bcard__head', {}, [
         h('h2.bcard__title', { text: title }),
+        dateEl,
         h('span.bcard__tag' + (isCn ? '' : '.bcard__tag--us'), { text: tag }),
       ]),
       grid,
@@ -178,6 +185,13 @@ export class Bonds {
 
   start() {
     this.active = true;
+    // 页面在后台时 schedule 会跳过刷新，回来后最多要等一个周期；
+    // 这里回前台立刻补一次（数据超过 60s 就重新取）
+    this.onVisible = () => {
+      if (!this.active || document.hidden) return;
+      if (!this.data || Date.now() - (this.data.fetchedAt || 0) > 60_000) this.load();
+    };
+    document.addEventListener('visibilitychange', this.onVisible);
     this.load();
     this.schedule();
   }
@@ -185,6 +199,10 @@ export class Bonds {
   stop() {
     this.active = false;
     clearTimeout(this.timer);
+    if (this.onVisible) {
+      document.removeEventListener('visibilitychange', this.onVisible);
+      this.onVisible = null;
+    }
   }
 
   schedule() {
@@ -221,22 +239,42 @@ export class Bonds {
     if (!data) return;
     this.data = data;
     this.paint();
-    this.setStatus(`${shortDate(data.date)} · 日频`, false);
+
+    // 两国发布节奏不同（美国 T+1），日期不一样时分别写出来，
+    // 免得看到两个不同日期的人以为是数据错乱
+    const { dates, date } = data;
+    const lag = !!(dates.cn && dates.us && dates.cn !== dates.us);
+    this.setStatus(lag
+      ? `中国 ${shortDate(dates.cn)} · 美国 ${shortDate(dates.us)} · 日频`
+      : `${shortDate(date)} · 日频`, false);
   }
 
   /* ---------------- 渲染 ---------------- */
 
+  /** 两国各自的数据日期小标；比对方旧的标成「延后」色 */
+  paintDates(d) {
+    const newest = [d.dates.cn, d.dates.us].filter(Boolean).sort().pop() || '';
+    for (const [el, date] of [[this.cnDateEl, d.dates.cn], [this.usDateEl, d.dates.us]]) {
+      if (!el) continue;
+      el.textContent = date ? shortDate(date) : '';
+      el.classList.toggle('is-lag', !!date && date !== newest);
+      el.title = date ? `数据日期 ${date}` : '';
+    }
+  }
+
   paint() {
     const d = this.data;
     if (!d) return;
-    const { latest, prev } = d;
+    const { last, prevOf } = d;
 
     // Hero：跟着当前期限走（否则会出现「10 年数字 + 2 年利差」的矛盾）
     const t = this.term;
-    const cn = latest['cn' + t];
-    const us = latest['us' + t];
-    const cnBp = bp(cn, prev['cn' + t]);
-    const usBp = bp(us, prev['us' + t]);
+    const cnCell = last['cn' + t];
+    const usCell = last['us' + t];
+    const cn = cnCell ? cnCell.v : null;
+    const us = usCell ? usCell.v : null;
+    const cnBp = cnCell ? bp(cn, prevOf['cn' + t]) : null;
+    const usBp = usCell ? bp(us, prevOf['us' + t]) : null;
 
     this.cnLabel.textContent = `中国 ${t} 年`;
     this.usLabel.textContent = `美国 ${t} 年`;
@@ -256,7 +294,10 @@ export class Bonds {
       this.heroSpread.textContent = fmtBp(diff);
       // 利差的负号是「水平差」不是「涨跌」，染红绿会被读成在跌，保持中性高对比色
       this.heroSpread.className = 'bspread__val';
-      this.heroSpreadNote.textContent = diff < 0 ? '中国低于美国' : '中国高于美国';
+      // 两边日期不同时，利差本身是「跨日相减」，必须点明
+      const mixed = d.dates.cn !== d.dates.us;
+      this.heroSpreadNote.textContent = (diff < 0 ? '中国低于美国' : '中国高于美国')
+        + (mixed ? `（美方数据 ${shortDate(d.dates.us)}）` : '');
     } else {
       this.heroSpread.textContent = '--';
       this.heroSpreadNote.textContent = '';
@@ -264,24 +305,28 @@ export class Bonds {
 
     // 分档
     for (const ten of TENORS) {
-      this.setRow('cn' + ten.key, latest[ten.cn], bp(latest[ten.cn], prev[ten.cn]));
-      this.setRow('us' + ten.key, latest[ten.us], bp(latest[ten.us], prev[ten.us]));
+      this.setRow('cn' + ten.key, last[ten.cn], bp(last[ten.cn]?.v, prevOf[ten.cn]));
+      this.setRow('us' + ten.key, last[ten.us], bp(last[ten.us]?.v, prevOf[ten.us]));
     }
     // 期限利差用接口自己给的值（与「10年−2年」直接相减可能因四舍五入差 0.1bp）
-    this.setSpread('cn', latest.cnSpread);
-    this.setSpread('us', latest.usSpread);
+    this.setSpread('cn', last.cnSpread);
+    this.setSpread('us', last.usSpread);
+
+    this.paintDates(d);
 
     this.listNote.textContent = '口径：中国为银行间国债到期收益率，美国为国债恒定到期收益率，'
-      + `均为日频，最新一期 ${d.date}。收益率上行 = 债券价格下跌，红色即收益率走高。`
+      + `均为日频。中国最新一期 ${shortDate(d.dates.cn)}，美国最新一期 ${shortDate(d.dates.us)}`
+      + '——美国国债按美东时间收盘后发布，通常比中国晚一个交易日，'
+      + '两边日期不同属正常。收益率上行 = 债券价格下跌，红色即收益率走高。'
       + '中美利差 = 同一期限的中国收益率 − 美国收益率。'
       + '数据来自东方财富公开接口，仅供参考，不构成投资建议。';
   }
 
-  setRow(key, val, change) {
+  setRow(key, cell, change) {
     const node = this.nodes.get(key);
     if (!node) return;
-    const ok = Number.isFinite(val) && val > 0;
-    node.val.textContent = ok ? `${fmtYield(val)}%` : '--';
+    const ok = !!cell && Number.isFinite(cell.v) && cell.v > 0;
+    node.val.textContent = ok ? `${fmtYield(cell.v)}%` : '--';
     node.val.className = 'brow__val ' + (ok ? dirText(change) : 'text-flat');
     if (node.chg) {
       node.chg.textContent = ok ? fmtBp(change) : '';
@@ -289,12 +334,12 @@ export class Bonds {
     }
   }
 
-  setSpread(key, v) {
+  setSpread(key, cell) {
     const node = this.nodes.get(key + 'spread');
     if (!node) return;
-    const ok = Number.isFinite(v);
+    const ok = !!cell && Number.isFinite(cell.v);
     // 接口给的是百分点，换成基点更好读
-    node.val.textContent = ok ? `${(v * 100).toFixed(1)}bp` : '--';
+    node.val.textContent = ok ? `${(cell.v * 100).toFixed(1)}bp` : '--';
     // 期限利差没有涨跌语义，正负只代表陡峭 / 倒挂，用中性色
     node.val.className = 'brow__val brow__val--spread' + (ok ? '' : ' text-flat');
   }
@@ -306,6 +351,9 @@ export class Bonds {
     for (const node of this.nodes.values()) {
       node.val.textContent = '--';
       if (node.chg) node.chg.textContent = '';
+    }
+    for (const el of [this.cnDateEl, this.usDateEl]) {
+      if (el) { el.textContent = ''; el.classList.remove('is-lag'); }
     }
     this.listNote.textContent = '暂时取不到国债收益率数据，下拉可重试。';
   }

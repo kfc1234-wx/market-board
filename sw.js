@@ -10,7 +10,7 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.20.0';
+const VERSION = 'v1.22.0';
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [
@@ -31,6 +31,8 @@ const ASSETS = [
   './js/data/series.js',
   './js/data/flows.js',
   './js/data/bonds.js',
+  './js/data/breadth.js',
+  './js/data/pool-a.js',
   './js/data/dividend.js',
   './js/data/sources/tencent.js',
   './js/data/sources/sinaFlow.js',
@@ -50,6 +52,7 @@ const ASSETS = [
   './js/ui/indices.js',
   './js/ui/bonds.js',
   './js/ui/nteam.js',
+  './js/ui/distribution.js',
   './js/ui/detail.js',
   './js/ui/flow.js',
   './js/ui/search.js',
