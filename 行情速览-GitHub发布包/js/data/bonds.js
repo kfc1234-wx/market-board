@@ -55,8 +55,10 @@ function pickRow(row) {
  * 取中美国债收益率
  * @param {{force?: boolean, days?: number}} [opt]
  * @returns {Promise<{
- *   date: string, prevDate: string,
- *   latest: Record<string, number|null>, prev: Record<string, number|null>,
+ *   date: string,                          // 最新一行数据的日期（可能是只有中国的 T+0 行）
+ *   dates: {cn: string, us: string},       // 两国各自最近一次有数据的日期
+ *   last: Record<string, {v: number, date: string}|null>,  // 每个指标最近一次有效值
+ *   prevOf: Record<string, number|null>,   // 该指标上一次有效值（算 bp 用）
  *   history: Array<{date: string} & Record<string, any>>,
  *   fetchedAt: number
  * }>}
@@ -94,26 +96,36 @@ export async function getYields(opt = {}) {
       const history = parsed.filter(r => r.cn10 > 0 || r.us10 > 0);
       if (!history.length) throw new Error('收益率全为空');
 
-      const latest = history[history.length - 1];
-
-      // 各期限独立向前找最近一个有效值：不能直接取 history[n-2]，
-      // 因为那一行对应的该期限可能是 null（另一国休市）
-      const prev = {};
+      // 每个指标各自往前找「最近一个有效值」与「上一次有效值」。
+      //
+      // 不能直接取 history 的最后一两行：美国国债收益率是 **T+1 发布**，
+      // 北京时间的「今天」这一行往往只有中国、美国整列全空。
+      // 取最后一行会让美国那一整块变成 '--'，看起来就像「美国国债不刷新了」。
+      const last = {};
+      const prevOf = {};
       for (const key of Object.keys(COLS)) {
-        let v = null;
-        for (let i = history.length - 2; i >= 0; i--) {
-          if (history[i][key] > 0) { v = history[i][key]; break; }
+        last[key] = null;
+        prevOf[key] = null;
+        let hit = 0;
+        for (let i = history.length - 1; i >= 0 && hit < 2; i--) {
+          const v = history[i][key];
+          if (!(Number.isFinite(v) && v > 0)) continue;
+          if (hit === 0) last[key] = { v, date: history[i].date };
+          else prevOf[key] = v;
+          hit++;
         }
-        prev[key] = v;
       }
 
-      // 上一期日期：找一行「两国 10 年期至少有一个有效」的最近日期
-      let prevDate = '';
-      for (let i = history.length - 2; i >= 0; i--) {
-        if (history[i].cn10 > 0 || history[i].us10 > 0) { prevDate = history[i].date; break; }
-      }
+      // 各国「数据日期」以 10 年期为准，缺失时退到其它期限
+      const countryDate = pfx => {
+        if (last[pfx + '10']) return last[pfx + '10'].date;
+        for (const t of ['2', '5', '30']) if (last[pfx + t]) return last[pfx + t].date;
+        return '';
+      };
+      const dates = { cn: countryDate('cn'), us: countryDate('us') };
 
-      const data = { date: latest.date, prevDate, latest, prev, history, fetchedAt: Date.now() };
+      const date = history[history.length - 1].date;
+      const data = { date, dates, last, prevOf, history, fetchedAt: Date.now() };
       cache = { at: Date.now(), data };
       return data;
     } finally {
