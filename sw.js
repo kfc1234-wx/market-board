@@ -10,7 +10,7 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.18.0';
+const VERSION = 'v1.20.0';
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [
@@ -120,10 +120,12 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   // 导航：network-first，离线回退 shell
+  // no-store 是必须的：GitHub Pages 给 HTML 打 max-age=600，普通 fetch 会命中
+  // 浏览器 HTTP 缓存，刷新后拿到的可能还是十分钟前的旧 shell。
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
       try {
-        return await fetch(req);
+        return await fetch(req, { cache: 'no-store' });
       } catch {
         const cached = await caches.match('./index.html');
         return cached || Response.error();
@@ -132,7 +134,31 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 静态资源：stale-while-revalidate
+  // 代码与样式：network-first，离线才回退缓存
+  //
+  // 这里原本是 stale-while-revalidate，看起来最快，但有个致命副作用：
+  // 页面永远比服务器慢一个版本——刷新第一次拿到新 HTML，却仍在跑缓存里的旧 JS，
+  // 「传了新包界面还是旧的」就是这么来的。改成网络优先后，联网时一定是最新版；
+  // 带 ETag 复验（no-cache），没改动时只回 304，开销很小。
+  const path = url.pathname;
+  const isCode = /\.(?:js|css|html|webmanifest)$/.test(path);
+  if (isCode) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req, { cache: 'no-cache' });
+        if (res && res.ok && res.type === 'basic') {
+          caches.open(SHELL).then(c => c.put(req, res.clone())).catch(() => {});
+        }
+        return res;
+      } catch {
+        const cached = await caches.match(req);
+        return cached || new Response('', { status: 504 });
+      }
+    })());
+    return;
+  }
+
+  // 图片 / 字体等长缓存资源：cache-first + 后台静默更新
   event.respondWith((async () => {
     const cached = await caches.match(req);
     const network = fetch(req).then(res => {

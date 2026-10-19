@@ -355,6 +355,16 @@
   grid-template-columns: 1fr 1fr;
   gap: 0 var(--sp-3);
 }
+/* display:grid 会覆盖 hidden 的默认 display:none，必须显式声明 */
+.depth__grid[hidden] { display: none; }
+/* 无五档时的说明行：指数 / 期货 / 汇率是源上就没有，个股是暂不可用 */
+.depth__none {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.depth__none[hidden] { display: none; }
 .depth__col { display: flex; flex-direction: column; gap: 1px; }
 .depth__row {
   display: grid;

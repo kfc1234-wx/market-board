@@ -246,6 +246,22 @@ function registerSW() {
       refreshed = true;
       location.reload();
     });
+
+    // 装到桌面的 PWA 不会「关掉再开」，可能几十天都不做一次导航，
+    // 浏览器的自动更新检查也就一直不触发。这里主动补两刀：
+    // 回到前台时查一次，长时间挂着时每 10 分钟查一次（都限流到 60s 一次）。
+    let lastCheck = 0;
+    const checkUpdate = () => {
+      const now = Date.now();
+      if (now - lastCheck < 60_000) return;
+      lastCheck = now;
+      reg.update().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkUpdate();
+    });
+    setInterval(checkUpdate, 10 * 60_000);
+    checkUpdate();
   }).catch(() => { /* 离线安装环境忽略 */ });
 }
 

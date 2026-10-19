@@ -263,26 +263,45 @@ export class Detail {
     const depthTitle = h('span.depth__title', { text: '五档盘口' });
     depthTitle.appendChild(this.depthLiveEl);
 
+    this.depthGridEl = h('div.depth__grid', {}, [
+      col(askLabels, this.askRows),
+      col(bidLabels, this.bidRows),
+    ]);
+    // 拿不到五档时不再整块消失：指数/期货/汇率这类是源上就没有，
+    // 个股/ETF 则是暂时取不到，两种要用不同措辞，别让人以为页面坏了
+    this.depthNoneEl = h('p.depth__none', { text: '', hidden: true });
+
     const el = h('div.depth', { hidden: true }, [
       h('div.depth__head', {}, [depthTitle, this.depthRatio]),
-      h('div.depth__grid', {}, [
-        col(askLabels, this.askRows),
-        col(bidLabels, this.bidRows),
-      ]),
+      this.depthGridEl,
+      this.depthNoneEl,
     ]);
     return el;
   }
 
-  /** 更新五档 + 委比；没有盘口数据时整块隐藏 */
+  /** 更新五档 + 委比；没有盘口数据时给出说明而不是整块消失 */
   paintDepth(q, digits) {
     if (!this.depthEl) return;
     const asks = Array.isArray(q.asks) ? q.asks : [];
     const bids = Array.isArray(q.bids) ? q.bids : [];
     if (!asks.length && !bids.length) {
-      this.depthEl.hidden = true;
+      // 个股/ETF 天生该有五档，拿不到就是异常；其余品种是数据源本就不提供
+      const native = this.sym.kind === 'stock' || this.sym.kind === 'etf';
+      this.depthEl.hidden = false;
+      this.depthGridEl.hidden = true;
+      this.depthNoneEl.hidden = false;
+      this.depthNoneEl.textContent = native
+        ? '盘口数据暂不可用，稍后自动重试'
+        : '该品种无五档盘口（数据源不提供）';
+      if (this.depthRatio) {
+        this.depthRatio.textContent = '';
+        this.depthRatio.className = 'depth__ratio';
+      }
       return;
     }
     this.depthEl.hidden = false;
+    this.depthGridEl.hidden = false;
+    this.depthNoneEl.hidden = true;
 
     const base = q.prevClose;
     const paintRow = (row, item) => {
