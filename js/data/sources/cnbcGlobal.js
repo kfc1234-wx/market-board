@@ -44,8 +44,28 @@ function usDate(v) {
 }
 
 /**
+ * ISO 时间 → 北京时间 'YYYY-MM-DD HH:MM:SS'
+ * 美元指数这类 24 小时品种要显示时分，而 CNBC 给的是美东时间；
+ * 直接拿来当北京时间算「多久没更新」会差 12 小时，卡片会被误判成已收盘。
+ */
+const BJ_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
+
+function bjTime(v) {
+  const d = new Date(String(v || ''));
+  if (Number.isNaN(d.getTime())) return '';
+  const p = {};
+  for (const x of BJ_FMT.formatToParts(d)) p[x.type] = x.value;
+  if (p.hour === '24') p.hour = '00';
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+
+/**
  * 批量取全球指数
- * @param {Array<{id:string, cnbc:string, closeTime?:string}>} items
+ * @param {Array<{id:string, cnbc:string, closeTime?:string, timeFromLast?:boolean}>} items
  *        id=本地主键（沿用 em_xxx，避免动已持久化的自选），cnbc=CNBC symbol（如 .N225）
  * @returns {Promise<Record<string, any>>} 以本地 id 为键
  */
@@ -86,8 +106,11 @@ export async function fetchCnbcGlobal(items) {
       : (prevClose ? +(((price - prevClose) / prevClose) * 100).toFixed(3) : 0);
 
     const date = usDate(row.last_time) || usDate(row.last_timedate);
-    // 只有日期没有时分，用该市场收盘钟点补全，让「已收盘 · 10-16」这类展示有时间可解析
-    const time = date ? `${date} ${hit.closeTime || '00:00:00'}` : '';
+    // 只有日期没有时分，用该市场收盘钟点补全，让「已收盘 · 10-16」这类展示有时间可解析；
+    // 美元指数这类 24 小时品种（timeFromLast）跟 CNBC 的实时时刻走，并换成北京时间
+    const time = hit.timeFromLast
+      ? (bjTime(row.last_time) || (date ? `${date} ${hit.closeTime || '00:00:00'}` : ''))
+      : (date ? `${date} ${hit.closeTime || '00:00:00'}` : '');
 
     out[hit.id] = {
       id: hit.id,

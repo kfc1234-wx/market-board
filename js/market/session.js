@@ -16,6 +16,8 @@ const SESS = {
   JP: { tz: 'Asia/Tokyo', seg: [[540, 690], [750, 900]] },         // 09:00-11:30, 12:30-15:00
   KR: { tz: 'Asia/Seoul', seg: [[540, 930]] },                     // 09:00-15:30
   FX: { tz: 'Asia/Shanghai', fx: true },                           // 外汇近 24×5
+  // 贵金属（现货黄金 / 人民币账户金）：报价时间是北京时间，周一至周五近乎连续
+  PM: { tz: 'Asia/Shanghai', fx: true },
 };
 
 const WD = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };

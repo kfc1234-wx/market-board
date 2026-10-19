@@ -1,12 +1,13 @@
 /**
  * 时间序列聚合层
  * 统一分时 / K 线的取数、缓存与降级。
- * 黄金走新浪，其余走腾讯；黄金的周/月线在本地由日线聚合。
+ * 外盘期货（现货黄金 / 布伦特 / 纳指期货…）走新浪期货接口，其余走腾讯；
+ * 人民币账户黄金走新浪外汇的 4 小时线并在本地合成日线。
  */
 
 import { fetchMinute, fetchKline } from './sources/tencent.js';
 import { fetchGoldMinute, fetchGoldDaily } from './sources/sinaGold.js';
-import { fetchFxQuoteAndMinute } from './sources/sinaFx.js';
+import { fetchFxQuoteAndMinute, fetchFxDaily } from './sources/sinaFx.js';
 import { getSymbol } from './symbols.js';
 
 const MINUTE_TTL = 30_000;
@@ -15,9 +16,11 @@ const KLINE_TTL = 90_000;
 const minuteCache = new Map(); // id -> {t, data}
 const klineCache = new Map();  // id:period -> {t, data}
 
-const isGold = sym => sym.market === 'CME' || sym.id.startsWith('hf_');
+const isGold = sym => sym.market === 'CME' || sym.market === 'PM' || sym.id.startsWith('hf_');
 const isFx = sym => sym.src === 'sinafx';
-/** 日韩指数（CNBC/东财）只有实时报价，没有分时 / K线接口 */
+/** 人民币账户黄金：唯一带折算系数、且能取到日线的外汇品种 */
+const isFxGold = sym => isFx(sym) && sym.divide > 0;
+/** 日韩指数 / 美元指数（CNBC/东财）只有实时报价，没有分时 / K线接口 */
 const isGlobalIndex = sym => sym.src === 'global';
 
 /**
@@ -66,7 +69,7 @@ export async function getMinute(id, opt = {}) {
 
   let data;
   if (isFx(sym)) {
-    const f = await fetchFxQuoteAndMinute(sym.id);
+    const f = await fetchFxQuoteAndMinute(sym.sina || sym.id, { divide: sym.divide });
     data = {
       points: f.points,
       prevClose: f.prevClose,
@@ -154,12 +157,18 @@ export async function getKline(id, period = 'day') {
   const c = klineCache.get(key);
   if (c && Date.now() - c.t < KLINE_TTL) return c.data;
 
-  if (isGlobalIndex(sym) || isFx(sym)) {
+  if (isGlobalIndex(sym)) {
+    throw new Error('该品种暂无 K 线数据');
+  }
+  if (isFx(sym) && !isFxGold(sym)) {
     throw new Error('该品种暂无 K 线数据');
   }
 
   let bars;
-  if (isGold(sym)) {
+  if (isFxGold(sym)) {
+    const daily = await fetchFxDaily(sym.sina || sym.id, { divide: sym.divide });
+    bars = period === 'day' ? daily.slice(-160) : aggregate(daily, period);
+  } else if (isGold(sym)) {
     const code = sym.id.replace(/^hf_/, '');
     if (period === 'day') {
       bars = await fetchGoldDaily(code, 160);

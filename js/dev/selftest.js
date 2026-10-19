@@ -4,6 +4,8 @@ import { h, clear } from '../util/dom.js';
 import { PRESET, getSymbol } from '../data/symbols.js';
 import { fetchQuotes, fetchMinute, fetchKline } from '../data/sources/tencent.js';
 import { fetchGoldMinute } from '../data/sources/sinaGold.js';
+import { fetchFxQuoteAndMinute } from '../data/sources/sinaFx.js';
+import { fetchCnbcGlobal } from '../data/sources/cnbcGlobal.js';
 import { fetchFlow } from '../data/sources/sinaFlow.js';
 import { getItems } from '../core/store.js';
 
@@ -27,7 +29,9 @@ function row(ok, label, detail, ms) {
  */
 export async function runSelfTest() {
   const out = [];
-  const allIds = PRESET.map(s => s.id);
+  // 只有腾讯源的品种能一次性批量取；日韩指数 / 美元指数 / 汇率走独立适配器，另有专项检查。
+  // hf_NQ 是有意排除的：腾讯没有纳指期货的 code，报价靠新浪分时推导。
+  const allIds = PRESET.filter(s => !s.src && s.id !== 'hf_NQ').map(s => s.id);
 
   // 1) 批量报价
   {
@@ -50,14 +54,14 @@ export async function runSelfTest() {
       : row(1, '腾讯·分时(A股)', `${r.value.points.length} 个点`, r.ms));
   }
 
-  // 3) 美股指数分时（专用端点）
+  // 3) 美股指数分时（专用端点）——开盘不足半小时时点数自然很少，20 点即算通
   {
     const sym = getSymbol('usNDX');
     const r = await time(() => fetchMinute(sym));
     const n = r.value?.points?.length || 0;
     out.push(r.error
       ? row(0, '腾讯·分时(美指)', `失败：${r.error.message || r.error}`, r.ms)
-      : row(n > 50 ? 1 : 0, '腾讯·分时(美指)', `${n} 个点`, r.ms));
+      : row(n > 20 ? 1 : 0, '腾讯·分时(美指)', `${n} 个点`, r.ms));
   }
 
   // 4) 美股指数 K 线（专用端点）
@@ -70,16 +74,35 @@ export async function runSelfTest() {
       : row(n > 10 ? 1 : 0, '腾讯·K线(美指)', `${n} 根日K`, r.ms));
   }
 
-  // 5) 黄金分时（新浪 JSONP）
+  // 5) 现货黄金分时（新浪 JSONP）
   {
-    const r = await time(() => fetchGoldMinute('GC'));
+    const r = await time(() => fetchGoldMinute('XAU'));
     const n = r.value?.points?.length || 0;
     out.push(r.error
       ? row(0, '新浪·黄金分时', `失败：${r.error.message || r.error}`, r.ms)
       : row(n > 100 ? 1 : 0, '新浪·黄金分时', `${n} 个点`, r.ms));
   }
 
-  // 6) ETF 资金流
+  // 6) 人民币账户黄金（新浪外汇 JSONP + 盎司→克折算）
+  {
+    const r = await time(() => fetchFxQuoteAndMinute('fx_sxaucny', { divide: 31.1034768 }));
+    const p = r.value?.quote?.price || 0;
+    out.push(r.error
+      ? row(0, '新浪·人民币账户金', `失败：${r.error.message || r.error}`, r.ms)
+      : row(p > 100 ? 1 : 0, '新浪·人民币账户金', `${p.toFixed(2)} 元/克`, r.ms));
+  }
+
+  // 7) 美元指数（CNBC）
+  {
+    const r = await time(() => fetchCnbcGlobal([{ id: 'usDXY', cnbc: '.DXY', timeFromLast: true }]));
+    const q = r.value?.usDXY;
+    out.push(r.error
+      ? row(0, 'CNBC·美元指数', `失败：${r.error.message || r.error}`, r.ms)
+      : row(q && q.price > 0 ? 1 : 0, 'CNBC·美元指数',
+        q ? `${q.price} · ${q.time}` : '无数据', r.ms));
+  }
+
+  // 8) ETF 资金流
   const etfs = getItems().filter(it => it.kind === 'etf').map(it => it.id);
   const probe = etfs.length ? etfs : ['sh510300'];
   for (const id of probe.slice(0, 4)) {

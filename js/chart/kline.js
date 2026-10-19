@@ -23,6 +23,20 @@ function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
 
+/**
+ * 量能单位倍率识别。
+ * K 线的量和报价的量不一定同单位（手 / 股 / 万手），换算关系基本是 10 的整次幂。
+ * 用对数距离判定：离最近的整次幂不超过 0.2 个量级（约 1.6 倍）才认，
+ * 认不出来返回 0，调用方就不动量柱——宁可不刷新，也不能把柱子画错数量级。
+ */
+function detectVolMult(ratio) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 0;
+  const lg = Math.log10(ratio);
+  const m = Math.round(lg);
+  if (m < -5 || m > 5) return 0;
+  return Math.abs(lg - m) <= 0.2 ? Math.pow(10, m) : 0;
+}
+
 /** 计算 MA 序列（基于全量 bars，保证可视区边缘连续） */
 function movingAverage(bars, n) {
   const out = new Array(bars.length).fill(null);
@@ -46,6 +60,7 @@ export class KlineChart {
 
     this.bars = [];
     this.mas = { 5: [], 10: [], 20: [] };
+    this._volMult = null;
     this.count = DEFAULT_BARS;
     this.start = 0;
     this.crossIndex = -1;
@@ -92,6 +107,7 @@ export class KlineChart {
     const wasAtRight = this.start + this.count >= prevLen - 1;
 
     this.bars = bars;
+    this._volMult = null;   // 量能单位未验证，等第一次 syncLast 比对
     this.mas = { 5: movingAverage(bars, 5), 10: movingAverage(bars, 10), 20: movingAverage(bars, 20) };
 
     this.count = clamp(this.count, MIN_BARS, MAX_BARS);
@@ -102,6 +118,70 @@ export class KlineChart {
     }
     if (this.crossIndex >= 0) this.opt.onHover?.(null);
     this.crossIndex = -1;
+    this._renderStatic();
+    this._blit();
+  }
+
+  /**
+   * 用实时报价刷新最后一根 K 线（增量，不重建视图）
+   *
+   * 三种情况：
+   *  - 报价日期 > 最后一根日期 且 正在交易 → 新起一根（开盘瞬间 K 线接口还没跟上）
+   *  - 报价日期 > 最后一根日期 但 已收盘 / 未开盘 → 不动，最后一根属于过去那天
+   *  - 日期相同 → 就地更新 收 / 高 / 低 / 量
+   *
+   * @param {{date?:string, trading?:boolean, price:number, high?:number,
+   *          low?:number, open?:number, volume?:number}} u
+   */
+  syncLast(u) {
+    if (!u || this.dead || !this.bars.length) return;
+    const price = Number(u.price);
+    if (!Number.isFinite(price) || price <= 0) return;
+
+    const last = this.bars[this.bars.length - 1];
+    const dayKey = d => String(d == null ? '' : d).replace(/\D/g, '').slice(0, 8);
+    const today = dayKey(u.date);
+    const lastDay = dayKey(last.date);
+
+    if (today && lastDay && today > lastDay) {
+      if (!u.trading) return;   // 还没开盘就拿到今天的日期，别把历史那根改脏
+      const atRight = this.start + this.count >= this.bars.length - 1;
+      const open = Number(u.open) > 0 ? Number(u.open) : price;
+      const high = Math.max(price, Number(u.high) || 0);
+      const low = Number(u.low) > 0 ? Math.min(Number(u.low), price) : price;
+      this.bars.push({
+        date: u.date,
+        open,
+        close: price,
+        high: Math.max(high, open),
+        low: Math.min(low, open),
+        volume: Number(u.volume) > 0 ? Number(u.volume) : 0,
+      });
+      this._volMult = null;   // 新的一根，量能单位重新验一次
+      if (atRight) this.start = Math.max(0, this.bars.length - this.count);
+    } else {
+      last.close = price;
+      if (Number(u.high) > last.high) last.high = Number(u.high);
+      if (Number(u.low) > 0 && Number(u.low) < last.low) last.low = Number(u.low);
+      // 首根 open 缺失时（新上市 / 数据异常）用报价补，避免一根从 0 拉上来的怪柱
+      if (!last.open) last.open = Number(u.open) > 0 ? Number(u.open) : price;
+
+      if (Number(u.volume) > 0) {
+        if (this._volMult === null && last.volume > 0) {
+          this._volMult = detectVolMult(last.volume / Number(u.volume));
+        }
+        if (this._volMult) last.volume = Math.round(Number(u.volume) * this._volMult);
+      }
+    }
+
+    this.mas = {
+      5: movingAverage(this.bars, 5),
+      10: movingAverage(this.bars, 10),
+      20: movingAverage(this.bars, 20),
+    };
+
+    // 光标压在图上读历史时不重绘：坐标轴若跟着实时价跳动，回看的数值会来回偏
+    if (this.crossIndex >= 0) return;
     this._renderStatic();
     this._blit();
   }

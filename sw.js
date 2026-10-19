@@ -10,7 +10,7 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.12.0';
+const VERSION = 'v1.18.0';
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [
@@ -37,6 +37,7 @@ const ASSETS = [
   './js/data/sources/sinaFx.js',
   './js/data/sources/emGlobal.js',
   './js/data/sources/cnbcGlobal.js',
+  './js/data/sources/fgGlobal.js',
   './js/data/sources/sinaGold.js',
   './js/data/sources/search.js',
   './js/market/session.js',

@@ -16,6 +16,9 @@ const APP = 'https://web.ifzq.gtimg.cn/appstock/app';
 /** 标准品种字段下标（A股/港股/美股指数 / ETF 均一致） */
 const F = {
   name: 1, code: 2, price: 3, prevClose: 4, open: 5, volume: 6,
+  outer: 7, inner: 8,               // 外盘 / 内盘（手）
+  bid1: 9,                          // 买一价起，每档「价,量」两列，共 5 档
+  ask1: 19,                         // 卖一价起，同样 5 档
   time: 30, change: 31, pct: 32, high: 33, low: 34,
   amountWan: 37, turnover: 38, pe: 39, floatCap: 44, totalCap: 45,
 };
@@ -88,7 +91,27 @@ function parseStandard(body, id) {
     time: f[F.time] || '',
     digits: digitsOf(priceStr, 2),
     suspended: price === 0,
+    outer: num(f[F.outer]),
+    inner: num(f[F.inner]),
+    bids: readDepth(f, F.bid1),
+    asks: readDepth(f, F.ask1),
   };
+}
+
+/**
+ * 读五档买卖盘：从起始下标起每档「价,量」两列。
+ * 美股指数 / 部分港股没有盘口，价位会是 0 或空，这类档位直接跳过，
+ * 全部跳过时返回空数组，UI 侧据此隐藏盘口区。
+ */
+function readDepth(f, start) {
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    const p = num(f[start + i * 2]);
+    const v = num(f[start + i * 2 + 1]);
+    if (!p) continue;
+    out.push({ p, v });
+  }
+  return out;
 }
 
 /**

@@ -40,18 +40,39 @@ const num = v => {
   return Number.isFinite(x) ? x : 0;
 };
 
-/** 最近 24 小时的 5 分钟线根数 */
+/** 最近 24 小时的 5 分钟线根数（连续品种的兜底窗口长度） */
 const DAY_BARS = 288;
 
 /**
- * 取 5 分钟线原始行
+ * 按「最近 24 小时」切当日窗口
+ *
+ * 早先直接取尾部 288 根，对 24×5 的汇率没问题，但对贵金属会翻车：
+ * 周末休市时 288 根会一路回溯到上周五，昨收变成周五的价，
+ * 周一一开盘就显示 -0.9% 的假跌幅。改成按时间锚定窗口，
+ * 休市空档自然被排除，昨收取窗口前一根（即上一交易日收盘）。
+ */
+function windowStart(rows) {
+  const ms = d => {
+    const t = Date.parse(String(d || '').replace(' ', 'T'));
+    return Number.isFinite(t) ? t : 0;
+  };
+  const lastMs = ms(rows[rows.length - 1]?.d);
+  if (!lastMs) return Math.max(0, rows.length - DAY_BARS);
+  const from = lastMs - 24 * 3600e3;
+  const i = rows.findIndex(r => ms(r.d) >= from);
+  return i > 0 ? i : Math.max(0, rows.length - DAY_BARS);
+}
+
+/**
+ * 取分钟线原始行
  * @param {string} code 如 fx_susdcnh
  * @param {number} datalen
+ * @param {number} [scale] 分钟粒度，默认 5
  */
-async function fetchMinRows(code, datalen = 320) {
+async function fetchMinRows(code, datalen = 320, scale = 5) {
   const cb = nextCb();
   const url = `${API}/var%20${cb}=/NewForexService.getMinKline`
-    + `?symbol=${encodeURIComponent(code)}&scale=5&datalen=${datalen}`;
+    + `?symbol=${encodeURIComponent(code)}&scale=${scale}&datalen=${datalen}`;
   const raw = await jsonpVar(url, cb, 9000);
 
   const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
@@ -78,32 +99,39 @@ async function fetchMinRows(code, datalen = 320) {
 
 /**
  * 报价 + 分时一次取回（共用同一份分钟线，少发一次请求）
- * @param {string} code fx_susdcnh
+ * @param {string} code fx_susdcnh / fx_sxaucny
+ * @param {{datalen?:number, divide?:number}} [opt]
+ *        divide：单位折算系数。新浪的 fx_sxaucny 是「元/盎司」，
+ *        人民币账户金要「元/克」，传 31.1034768 即可，价、开高低、昨收同步折算。
  */
-export async function fetchFxQuoteAndMinute(code, datalen = 320) {
-  const hit = cache.get(code);
+export async function fetchFxQuoteAndMinute(code, opt = {}) {
+  const datalen = opt.datalen ?? 320;
+  const div = opt.divide > 0 ? opt.divide : 1;
+  const key = div === 1 ? code : `${code}@${div}`;
+
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.t < CACHE_TTL && !hit.force) return hit.data;
 
   const rows = await fetchMinRows(code, datalen);
 
   // 取最近 24 小时作为一个"交易日窗口"，多留几根余量避免边界抖动
-  const start = Math.max(0, rows.length - DAY_BARS);
+  const start = windowStart(rows);
   const today = rows.slice(start);
   if (!today.length) throw new Error('外汇当日数据为空');
 
-  const price = today[today.length - 1].c;
-  const open = today[0].o || today[0].c;
+  const price = today[today.length - 1].c / div;
+  const open = (today[0].o || today[0].c) / div;
   let high = 0;
   let low = 0;
   for (const r of today) {
-    if (r.h > high) high = r.h;
-    if (!low || r.l < low) low = r.l;
+    if (r.h / div > high) high = r.h / div;
+    if (!low || r.l / div < low) low = r.l / div;
   }
 
   // 昨收：窗口前一根的收盘。数据不足时退回窗口首根开盘价。
   let prevClose = 0;
   for (let i = start - 1; i >= 0; i--) {
-    if (rows[i].c > 0) { prevClose = rows[i].c; break; }
+    if (rows[i].c > 0) { prevClose = rows[i].c / div; break; }
   }
   if (!(prevClose > 0)) prevClose = open;
 
@@ -128,21 +156,68 @@ export async function fetchFxQuoteAndMinute(code, datalen = 320) {
     floatCap: 0,
     totalCap: 0,
     time: today[today.length - 1].d,
-    digits: 4,
+    digits: div === 1 ? 4 : 2,
     suspended: false,
     src: 'sinafx',
   };
 
   const points = today.map(r => ({
     t: r.time,
-    price: r.c,
+    price: r.c / div,
     cumVol: 0,
     cumAmt: 0,
   }));
 
   const data = { quote, points, prevClose, date: today[today.length - 1].day };
-  cache.set(code, { t: Date.now(), data });
+  cache.set(key, { t: Date.now(), data });
   return data;
+}
+
+/**
+ * '2026-10-20 02:00:00' 往前推 backMin 分钟后的日期
+ * 这个服务的大周期线标的是「区间结束时间」：22:00 那根其实是 18:00–22:00，
+ * 02:00 那根是前一晚 22:00–次日 02:00。不往前推，夜盘会被算到第二天去，
+ * 日K 末尾就会冒出一根「明天」的假 K 线。
+ */
+function dayOf(d, backMin = 0) {
+  const s = String(d || '');
+  const parts = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
+  if (!parts || !backMin) return s.slice(0, 10);
+  const t = Date.UTC(+parts[1], +parts[2] - 1, +parts[3], +parts[4], +parts[5]);
+  return new Date(t - backMin * 60000).toISOString().slice(0, 10);
+}
+
+/**
+ * 4 小时线 → 日线（人民币账户金的日K来源）
+ *
+ * 这个服务只给到 scale=240（4 小时）且没有 1440，所以日线在本地合并：
+ * 同一天的第一根开盘、最后一根收盘、最高最低取极值。900 根 ≈ 150 个交易日，
+ * 够画日K并聚合出周/月线，一次约 90KB，比 5 分钟线省得多。
+ */
+export async function fetchFxDaily(code, opt = {}) {
+  const div = opt.divide > 0 ? opt.divide : 1;
+  const scale = opt.scale ?? 240;
+  const rows = await fetchMinRows(code, opt.datalen ?? 900, scale);
+
+  const byDay = new Map();
+  for (const r of rows) {
+    const day = dayOf(r.d, scale);
+    let b = byDay.get(day);
+    if (!b) {
+      b = { date: day, open: r.o / div, close: r.c / div, high: r.h / div, low: r.l / div, volume: 0 };
+      byDay.set(day, b);
+    } else {
+      b.close = r.c / div;
+      if (r.h / div > b.high) b.high = r.h / div;
+      if (r.l / div < b.low) b.low = r.l / div;
+    }
+  }
+
+  const bars = [...byDay.values()]
+    .filter(b => b.date && b.close > 0 && b.high >= b.low)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (!bars.length) throw new Error('黄金日线为空');
+  return bars;
 }
 
 /** 作废缓存（下拉刷新用） */

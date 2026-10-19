@@ -10,8 +10,10 @@
 
 import { fetchQuotes } from './sources/tencent.js';
 import { fetchCnbcGlobal } from './sources/cnbcGlobal.js';
+import { fetchFgGlobal } from './sources/fgGlobal.js';
 import { fetchEmGlobal } from './sources/emGlobal.js';
 import { fetchFxQuoteAndMinute } from './sources/sinaFx.js';
+import { fetchFuturesQuote } from './sources/sinaGold.js';
 import { getSymbol } from './symbols.js';
 import { patchCatalogName } from './sources/search.js';
 
@@ -113,10 +115,10 @@ async function flush() {
     return;
   }
 
-  // 按数据源分组：腾讯是批量文本接口，日韩指数走 CNBC（东财兜底），新浪外汇是 JSONP
+  // 按数据源分组：腾讯是批量文本接口，全球指数走 CNBC（东财兜底），新浪外汇是 JSONP
   const txCodes = [];
   const globalItems = [];
-  const fxCodes = [];
+  const fxItems = [];
   for (const id of ids) {
     const sym = getSymbol(id);
     if (!sym || !sym.id) continue;
@@ -124,9 +126,11 @@ async function flush() {
       id: sym.id,
       cnbc: sym.cnbc,
       secid: sym.secid,
+      fg: sym.fg,
       closeTime: sym.closeTime,
+      timeFromLast: sym.timeFromLast,
     });
-    else if (sym.src === 'sinafx') fxCodes.push(sym.id);
+    else if (sym.src === 'sinafx') fxItems.push({ id: sym.id, sina: sym.sina, divide: sym.divide });
     else txCodes.push(sym.id);
   }
 
@@ -154,7 +158,25 @@ async function flush() {
     lastError = e;
   }
 
-  // --- 日韩指数：CNBC 主源，拿不到的再用东财补 ---
+  // --- 外盘期货补漏：腾讯没有纳指期货（hf_NQ 返回 none_match），
+  // 这类缺失的 hf_ 品种改走新浪期货分时推导报价。
+  // 标普期货 hf_ES 腾讯有，不会进这里。
+  const futMissing = txCodes.filter(c => c.startsWith('hf_') && !cache.has(c));
+  if (futMissing.length && canTry('sinahf')) {
+    try {
+      for (const code of futMissing) {
+        const q = await fetchFuturesQuote(code.slice(3));
+        cache.set(code, { t: Date.now(), data: { ...q, id: code } });
+      }
+      markOk('sinahf');
+      ok = true;
+    } catch (e) {
+      lastError = e;
+      markFail('sinahf');
+    }
+  }
+
+  // --- 日韩指数：CNBC 主源 → feargreedchart 兜底 → 东财补漏 ---
   if (globalItems.length) {
     let got = {};
     if (canTry('cnbc')) {
@@ -168,7 +190,21 @@ async function flush() {
       }
     }
 
-    const missing = globalItems.filter(it => !got[it.id]);
+    // feargreedchart：独立第三方，CORS 开放、无需 Key，专治 CNBC 单点失联
+    let missing = globalItems.filter(it => !got[it.id]);
+    if (missing.length && canTry('fg')) {
+      try {
+        const rest = await fetchFgGlobal(missing);
+        got = { ...got, ...rest };
+        markOk('fg');
+        ok = true;
+      } catch (e) {
+        lastError = e;
+        markFail('fg');
+      }
+    }
+
+    missing = globalItems.filter(it => !got[it.id]);
     if (missing.length && canTry('em')) {
       try {
         const rest = await fetchEmGlobal(missing);
@@ -189,13 +225,14 @@ async function flush() {
     }
   }
 
-  // --- 新浪外汇（离岸人民币）---
-  for (const code of fxCodes) {
+  // --- 新浪外汇（离岸人民币 / 人民币账户黄金）---
+  for (const it of fxItems) {
+    const code = it.id;
     if (!canTry('fx:' + code)) continue;
     try {
-      const { quote } = await fetchFxQuoteAndMinute(code);
+      const { quote } = await fetchFxQuoteAndMinute(it.sina || code, { divide: it.divide });
       if (quote && quote.valid) {
-        cache.set(code, { t: Date.now(), data: quote });
+        cache.set(code, { t: Date.now(), data: { ...quote, id: code } });
         markOk('fx:' + code);
         ok = true;
       }

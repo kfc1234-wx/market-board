@@ -1,8 +1,8 @@
 /** 详情页：报价头部 + 分时/日K/周K/月K + ETF 资金流 */
 
 import { h, clear } from '../util/dom.js';
-import { fmtPrice, fmtPct, fmtChange, fmtVolume, fmtMinuteTime, dirClass } from '../util/format.js';
-import { getSymbol, kindLabel, codeText } from '../data/symbols.js';
+import { fmtPrice, fmtPct, fmtChange, fmtVolume, fmtBig, fmtMinuteTime, dirClass } from '../util/format.js';
+import { getSymbol, kindLabel, codeText, isPreset } from '../data/symbols.js';
 import { getQuotes } from '../data/quotes.js';
 import { getDividend } from '../data/dividend.js';
 import { getMinute, getKline, fillPrevClose } from '../data/series.js';
@@ -15,7 +15,8 @@ import { renderFlowPanel } from './flow.js';
 /** 各市场单日分钟数与时段（用于索引轴） */
 const MARKET_TZ = {
   CN: 'Asia/Shanghai', HK: 'Asia/Hong_Kong', US: 'America/New_York',
-  CME: 'America/New_York', JP: 'Asia/Tokyo', KR: 'Asia/Seoul', FX: 'Asia/Shanghai',
+  CME: 'America/New_York', JP: 'Asia/Tokyo', KR: 'Asia/Seoul',
+  FX: 'Asia/Shanghai', PM: 'Asia/Shanghai',
 };
 // FX 不写固定值：外汇一天 288 根 5 分钟线，但「今天走到几点」是变的，交给数据决定
 const AXIS_COUNT = { CN: 241, HK: 332, US: 391, CME: 1380, JP: 300, KR: 390 };
@@ -27,6 +28,7 @@ const SEGMENTS = {
   JP: [[540, 900]],
   KR: [[540, 930]],
   FX: [[0, 1440]],
+  PM: [[0, 1440]],
 };
 
 function hm(min) {
@@ -50,6 +52,13 @@ function fxLabels(points) {
   const b = toMin(points[points.length - 1].t);
   if (a == null || b == null || b <= a) return fallback;
   return [0, 0.25, 0.5, 0.75, 1].map(f => hm(Math.round((a + (b - a) * f) / 5) * 5));
+}
+
+/** 从报价时间戳里抠出日期（腾讯 A股形如 20261019150003，美指可能带分隔符） */
+function quoteDate(q) {
+  const d = String(q?.time || '').replace(/\D/g, '');
+  if (d.length < 8) return '';
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 }
 
 /** 按交易时段等分生成 5 个时间刻度 */
@@ -155,6 +164,19 @@ export class Detail {
     this.gridEl = h('dl.quote__grid');
     this.fillGrid(null);
 
+    // 量能行：成交量 / 成交额 / 外盘 / 内盘（实时，随轮询刷新）
+    this.volCells = [0, 1, 2, 3].map(() => h('dd', { text: '--' }));
+    this.volLabels = [];
+    this.volEl = h('dl.quote__grid.quote__grid--vol', {},
+      ['成交量', '成交额', '外盘', '内盘'].map((label, i) => {
+        const dt = h('dt', { text: label });
+        this.volLabels.push(dt);
+        return h('div.quote__cell', {}, [dt, this.volCells[i]]);
+      }));
+
+    // 五档盘口（只有真正有买卖盘的品种才显示，指数 / 期货自动隐藏）
+    this.depthEl = this.buildDepth();
+
     // 个股：加一条股息率(TTM) 信息行
     this.divEl = null;
     if (sym.kind === 'stock') {
@@ -164,6 +186,8 @@ export class Detail {
     const quote = h('div.quote', {}, [
       h('div.quote__main', {}, [this.priceEl, this.chgEl]),
       this.gridEl,
+      this.volEl,
+      this.depthEl,
       this.divEl,
     ]);
     this.quoteEl = quote;
@@ -212,6 +236,100 @@ export class Detail {
     }
   }
 
+  /**
+   * 五档盘口骨架：左列卖五→卖一（自上而下），右列买一→买五，
+   * 成交软件习惯的紧凑双列，高度只占 5 行。
+   * 每行固定节点，轮询时只改文本，避免每 5 秒重建 DOM 抖动。
+   */
+  buildDepth() {
+    this.askRows = [];
+    this.bidRows = [];
+    this.depthRatio = h('span.depth__ratio', { text: '' });
+
+    const col = (labels, sink) => h('div.depth__col', {}, labels.map(label => {
+      const p = h('span.depth__p', { text: '--' });
+      const v = h('span.depth__v', { text: '--' });
+      sink.push({ p, v });
+      return h('div.depth__row', {}, [h('span.depth__tag', { text: label }), p, v]);
+    }));
+
+    // 卖盘自上而下显示卖五→卖一（价格由高到低，视觉上向现价收拢）
+    const askLabels = ['卖五', '卖四', '卖三', '卖二', '卖一'];
+    const bidLabels = ['买一', '买二', '买三', '买四', '买五'];
+
+    // 「实时」小胶囊：拖动光标回看历史时盘口仍常驻且继续刷新，
+    // 必须标一下它对应的是此刻而不是光标那一刻，否则等于张冠李戴
+    this.depthLiveEl = h('em.depth__live', { text: '实时', hidden: true });
+    const depthTitle = h('span.depth__title', { text: '五档盘口' });
+    depthTitle.appendChild(this.depthLiveEl);
+
+    const el = h('div.depth', { hidden: true }, [
+      h('div.depth__head', {}, [depthTitle, this.depthRatio]),
+      h('div.depth__grid', {}, [
+        col(askLabels, this.askRows),
+        col(bidLabels, this.bidRows),
+      ]),
+    ]);
+    return el;
+  }
+
+  /** 更新五档 + 委比；没有盘口数据时整块隐藏 */
+  paintDepth(q, digits) {
+    if (!this.depthEl) return;
+    const asks = Array.isArray(q.asks) ? q.asks : [];
+    const bids = Array.isArray(q.bids) ? q.bids : [];
+    if (!asks.length && !bids.length) {
+      this.depthEl.hidden = true;
+      return;
+    }
+    this.depthEl.hidden = false;
+
+    const base = q.prevClose;
+    const paintRow = (row, item) => {
+      if (!item) {
+        row.p.textContent = '--';
+        row.v.textContent = '--';
+        row.p.className = 'depth__p';
+        return;
+      }
+      row.p.textContent = fmtPrice(item.p, digits);
+      // 量以「手」为单位，不足一万时直接显示整数更清爽
+      row.v.textContent = item.v >= 1e4 ? fmtVolume(item.v) : String(item.v);
+      row.p.className = 'depth__p ' + (base ? dirClass(item.p - base) : '');
+    };
+
+    // asks 是买一~卖一正序（下标 0 = 卖一），左列要卖五→卖一，所以反着填
+    for (let i = 0; i < 5; i++) paintRow(this.askRows[i], asks[4 - i]);
+    for (let i = 0; i < 5; i++) paintRow(this.bidRows[i], bids[i]);
+
+    // 委比 =（委买 − 委卖）/（委买 + 委卖）
+    const sumB = bids.reduce((s, x) => s + (x.v || 0), 0);
+    const sumA = asks.reduce((s, x) => s + (x.v || 0), 0);
+    if (sumA + sumB > 0) {
+      const ratio = ((sumB - sumA) / (sumB + sumA)) * 100;
+      this.depthRatio.textContent = `委比 ${ratio > 0 ? '+' : ''}${ratio.toFixed(1)}%`;
+      this.depthRatio.className = 'depth__ratio ' + dirClass(ratio);
+    } else {
+      this.depthRatio.textContent = '';
+    }
+  }
+
+  /** 实时量能：成交量（手）/ 成交额 / 外盘 / 内盘 */
+  paintVol(q) {
+    if (!this.volCells) return;
+    const [vol, amt, outer, inner] = this.volCells;
+    // 期货 / 贵金属 / 汇率源里没有量，四项全空时整行收起，别占着一排 --
+    const has = q.volume > 0 || q.amount > 0 || q.outer > 0 || q.inner > 0;
+    this.volEl.hidden = !has;
+    if (!has) return;
+    vol.textContent = q.volume > 0 ? `${fmtVolume(q.volume)}手` : '--';
+    amt.textContent = q.amount > 0 ? fmtBig(q.amount) : '--';
+    outer.textContent = q.outer > 0 ? fmtVolume(q.outer) : '--';
+    inner.textContent = q.inner > 0 ? fmtVolume(q.inner) : '--';
+    outer.className = q.outer > 0 ? 'text-up' : '';
+    inner.className = q.inner > 0 ? 'text-down' : '';
+  }
+
   async loadQuote() {
     const ids = [this.id];
     const map = await getQuotes(ids, { maxAge: 0 });
@@ -222,6 +340,18 @@ export class Detail {
     this.loadDividend(q);
     if (this.period === 'trend' && this.chart instanceof TrendChart) {
       this.chart.patchLast(q.price);
+    } else if (this.chart instanceof KlineChart) {
+      const st = effectiveState(q, this.sym.market);
+      this.chart.syncLast({
+        date: quoteDate(q),
+        trading: st === 'open' || st === 'post',
+        open: q.open,
+        price: q.price,
+        high: q.high,
+        low: q.low,
+        // 日线的量是当日累计值可直接对齐；周/月线是区间累计，今日量不能覆盖
+        volume: this.period === 'day' ? q.volume : 0,
+      });
     }
   }
 
@@ -247,13 +377,35 @@ export class Detail {
     }
   }
 
+  /**
+   * 量能 + 五档：永远跟最新一次报价走
+   *
+   * 这两块描述的是「此刻的委托与成交」，与光标停在哪根 K 线无关，
+   * 所以回看历史时不冻结、不隐藏，只把「实时」标点亮，把量能行的
+   * 标签从「成交量」换成「今量」，说明它是今日累计而不是光标那根。
+   */
+  paintLive(q, digits) {
+    this.paintVol(q);
+    this.paintDepth(q, digits);
+    if (this.depthLiveEl) this.depthLiveEl.hidden = !this.hovering;
+    if (this.volLabels?.length) {
+      const names = this.hovering
+        ? ['今量', '今额', '外盘', '内盘']
+        : ['成交量', '成交额', '外盘', '内盘'];
+      this.volLabels.forEach((dt, i) => { dt.textContent = names[i]; });
+    }
+  }
+
   paintQuote() {
     const q = this.quote;
     if (!q) return;
-    // 光标压在 K 线上时头部归光标管，轮询回来也不能把它顶掉
-    if (this.hovering) return;
     const maxDigits = this.sym.kind === 'index' ? 2 : 4;
     const digits = Math.min(q.digits ?? this.sym.digits ?? 2, maxDigits);
+
+    // 盘口与量能先更新：即使正在回看历史，它们也要跟着轮询继续动
+    this.paintLive(q, digits);
+    // 光标压在 K 线上时头部（价格/四格/时间）归光标管，轮询回来也不能顶掉
+    if (this.hovering) return;
 
     tickTo(this.priceEl, q.price, v => fmtPrice(v, digits));
     this.priceEl.className = 'quote__price ' + dirClass(q.pct);
@@ -268,7 +420,9 @@ export class Detail {
     const t = shortTime(q.time);
     this.metaEl.textContent = `${codeText(this.sym.id)} · ${kindLabel(this.sym)} · ${stateText(st)}${t ? ' · ' + t : ''}`;
 
-    if (q.name && q.name !== this.nameEl.textContent) {
+    // 内置品种用自己起的短名（「现货黄金」而不是数据源的「伦敦金（现货黄金）」），
+    // 搜索添加的标的才用数据源给的权威名称
+    if (q.name && !isPreset(this.id) && q.name !== this.nameEl.textContent) {
       this.nameEl.textContent = q.name;
     }
   }
@@ -292,6 +446,13 @@ export class Detail {
 
     this.hovering = true;
     this.quoteEl?.classList.add('is-cursor');
+    // 盘口与量能不再收起：它们跟的是「此刻」，不是光标那一刻，
+    // 保持常驻能让主人一边回看走势一边盯着当下的挂单变化
+    if (this.depthLiveEl) this.depthLiveEl.hidden = false;
+    if (this.volLabels?.length) {
+      this.volLabels[0].textContent = '今量';
+      this.volLabels[1].textContent = '今额';
+    }
     const d = this._digits();
     const pct = Number.isFinite(info.pct) ? info.pct : 0;
     const tint = Math.abs(pct) < 0.005 ? 0 : pct;
@@ -342,6 +503,12 @@ export class Detail {
 
     this.hovering = true;
     this.quoteEl?.classList.add('is-cursor');
+    // 同分时：盘口常驻，标注「实时」即可，不再整块隐藏
+    if (this.depthLiveEl) this.depthLiveEl.hidden = false;
+    if (this.volLabels?.length) {
+      this.volLabels[0].textContent = '今量';
+      this.volLabels[1].textContent = '今额';
+    }
     const d = this._digits();
     // 幅度小于 0.005% 的染红染绿只是噪音，按平盘上灰
     const tint = v => (Math.abs(v) < 0.005 ? 0 : v);
@@ -440,7 +607,8 @@ export class Detail {
         this.chart = new TrendChart(this.hostEl, {
           digits: this._digits(),
           onHover: info => this.onTrendHover(info),
-          timeLabels: this.sym.market === 'FX'
+          // 外汇 / 贵金属是近 24 小时连续报价，没有固定开收盘，刻度按实际数据首尾等分
+          timeLabels: (this.sym.market === 'FX' || this.sym.market === 'PM')
             ? fxLabels(data.points)
             : timeLabelsFor(this.sym.market),
         });
@@ -476,6 +644,7 @@ export class Detail {
       return key === 'trend' ? '该指数数据源仅提供实时报价' : '该指数暂无 K 线数据';
     }
     if (this.sym.kind === 'forex' && key !== 'trend') return '汇率暂无 K 线数据';
+    if (this.sym.kind === 'commodity') return '该品种暂无图表数据';
     if (this.sym.kind === 'futures') return '该品种暂无图表数据';
     if (msg.includes('为空')) return '暂无数据';
     return '加载失败，请稍后重试';
@@ -490,6 +659,11 @@ export class Detail {
     clear(this.stateEl);
     this.stateEl.hidden = false;
     this.stateEl.appendChild(h('div', { text }));
+    // 「该指数数据源仅提供实时报价」这类是能力边界，重试也没用，别给假希望
+    if (text.includes('仅提供实时报价') || text.includes('暂无 K 线数据')) {
+      this.stateEl.onclick = null;
+      return;
+    }
     this.stateEl.appendChild(h('div.chart-state__hint', { text: '轻点重试' }));
     this.stateEl.onclick = () => {
       this.chart = null;

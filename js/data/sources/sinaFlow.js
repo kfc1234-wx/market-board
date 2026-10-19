@@ -59,8 +59,53 @@ export async function fetchFlow(id, days = 20) {
   return list;
 }
 
-/** 派生指标 */
-export function flowStats(rows) {
+/**
+ * 当日实时资金流（盘中随成交滚动，收盘后定稿）
+ *
+ * 上面那条 `ssl_qsfx_zjlrqs` 是**日频历史**接口：一天只生成一根，
+ * 盘中再怎么刷都是同一个数，所以国家队页的「资金量」看着像卡住了。
+ * 这条 `ssi_ssfx_flzjtj` 是当日实时统计，`netamount` 口径与历史接口完全一致
+ * （主动买 − 主动卖），可以直接覆盖「今日」那根而不破坏序列。
+ *
+ * 支持批量：`daima=sh510300,sh510500` → 返回数组，每项自带 symbol 可反查。
+ *
+ * @param {string[]} ids 腾讯 code，如 ['sh510300']
+ * @returns {Promise<Map<string, {net:number, main:number, mainPct:number, close:number, chgPct:number, volume:number}>>}
+ */
+export async function fetchFlowLive(ids = []) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean);
+  if (!list.length) return new Map();
+
+  const cb = `_sfl${++seq}_${Date.now().toString(36)}`;
+  const url = `${BASE}/var%20${cb}=/MoneyFlow.ssi_ssfx_flzjtj`
+    + `?daima=${encodeURIComponent(list.join(','))}`;
+  const raw = await jsonpVar(url, cb, 8000);
+
+  const rows = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? [raw] : []);
+  const out = new Map();
+  for (const r of rows) {
+    const key = String(r?.symbol || '').toLowerCase();
+    const net = Number(r?.netamount);
+    if (!key || !Number.isFinite(net)) continue;
+    // 实时接口只给分档的流入/流出，主力净额与占比要自己算
+    const mainIn = Number(r.r0_in) || 0;
+    const mainOut = Number(r.r0_out) || 0;
+    const gross = mainIn + mainOut;
+    const chg = Number(r.changeratio);
+    out.set(key, {
+      net,
+      main: mainIn - mainOut,
+      mainPct: gross > 0 ? +(((mainIn - mainOut) / gross) * 100).toFixed(4) : 0,
+      close: Number(r.trade) || 0,
+      chgPct: Number.isFinite(chg) ? +(chg * 100).toFixed(3) : 0,
+      volume: Number(r.volume) || 0,
+    });
+  }
+  if (!out.size) throw new Error('实时资金流为空');
+  return out;
+}
+
+/** 派生指标 */export function flowStats(rows) {
   if (!Array.isArray(rows) || !rows.length) {
     return { today: null, main: 0, mainPct: 0, netPct: 0, d5: 0, d10: 0, d20: 0, streak: 0, streakDir: 0 };
   }

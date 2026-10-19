@@ -16,7 +16,7 @@ import {
 import { getNTeam, takeNTeam, addNTeam, subscribe } from '../core/store.js';
 import { getSymbol, kindLabel, kindClass, codeText } from '../data/symbols.js';
 import { getQuotes, invalidate } from '../data/quotes.js';
-import { getFlow } from '../data/flows.js';
+import { getFlow, getLiveFlow } from '../data/flows.js';
 import { tickTo, setText } from './ticker.js';
 import { actionSheet, toast, snackbar } from './toast.js';
 import { effectiveState, stateText } from '../market/session.js';
@@ -38,6 +38,9 @@ export class NTeam {
 
     this.quotes = new Map();
     this.flows = new Map();
+    /** 当日实时资金流（id → {net, ...}），跟报价一起 15s 刷新 */
+    this.liveFlow = new Map();
+    this.liveAt = 0;
     this.nodes = new Map();   // id -> { row, price, pct, sub }
     this.signature = null;    // 空列表时 sig 为 ''，不能用 '' 做初始值（会误判命中跳过 build）
     this.active = false;
@@ -70,6 +73,7 @@ export class NTeam {
   refreshNow() {
     invalidate();
     this.flows.clear();
+    this.liveFlow.clear();
     this.rerender();
     return Promise.all([this.refreshQuotes(true), this.loadFlows(true)]);
   }
@@ -220,12 +224,41 @@ export class NTeam {
   async refreshQuotes(force = false) {
     const ids = [...this.nodes.keys()];
     if (!ids.length) return;
+
+    // 资金量和报价同一批标的，顺手一起刷：一次批量 JSONP，不额外增加轮询压力。
+    // 不 await，让它自己画完，别拖慢报价首屏。
+    this.refreshLiveFlow(force).catch(() => {});
+
     const map = await getQuotes(ids, force ? { maxAge: 0 } : undefined);
     if (!this.active) return;
     for (const [id, q] of map) this.quotes.set(id, q);
     this.paint();
     this.paintSummary();
     this.setStatus(this.liveText());
+  }
+
+  /**
+   * 当日实时资金流
+   * 日频历史接口（getFlow）一天只出一根，盘中刷新也是同一个数，
+   * 所以「今日净流入」走实时接口，跟着报价 15s 滚一次。
+   */
+  async refreshLiveFlow(force = false) {
+    const etfs = getNTeam().filter(it => it.kind === 'etf').map(it => it.id);
+    if (!etfs.length) return;
+    const map = await getLiveFlow(etfs, force ? { force: true } : undefined);
+    if (!this.active || !map.size) return;
+    for (const [id, v] of map) this.liveFlow.set(id, v);
+    this.liveAt = Date.now();
+    this.paint();
+    this.paintSummary();
+  }
+
+  /** 今日净流入：实时值优先，取不到再退回日频快照 */
+  netOf(id, flow) {
+    const lv = this.liveFlow.get(id);
+    if (lv && Number.isFinite(lv.net)) return lv.net;
+    const today = flow?.stats?.today;
+    return Number.isFinite(today?.net) ? today.net : NaN;
   }
 
   paint() {
@@ -255,7 +288,7 @@ export class NTeam {
     el.appendChild(h('span', { text: codeText(item.id) }));
 
     if (item.kind === 'etf') {
-      const net = flow?.stats?.today?.net;
+      const net = this.netOf(item.id, flow);
       if (Number.isFinite(net)) {
         el.appendChild(h('span.row__sep', { text: '·' }));
         el.appendChild(h('span.row__flow ' + dirClass(net), { text: `净流入 ${fmtSignedBig(net)}` }));
@@ -284,7 +317,7 @@ export class NTeam {
       const q = this.quotes.get(it.id);
       if (q && q.valid && q.volume > 0) { vol += q.volume; volN++; }
       const f = this.flows.get(it.id);
-      const net = f?.stats?.today?.net;
+      const net = this.netOf(it.id, f);
       if (Number.isFinite(net)) { flowSum += net; flowN++; }
     }
 
@@ -294,7 +327,11 @@ export class NTeam {
     if (flowN > 0) {
       this.flowVal.textContent = fmtSignedBig(flowSum);
       this.flowVal.className = 'nte-sum__val ' + dirClass(flowSum);
-      this.flowNote.textContent = '资金量汇总 · ETF 净流入';
+      // 标一下「实时」：这条跟着 15s 轮询滚，和顶部报价同一个节奏
+      const live = this.liveFlow.size > 0;
+      this.flowNote.textContent = live
+        ? '资金量汇总 · ETF 净流入 · 实时'
+        : '资金量汇总 · ETF 净流入';
     } else {
       this.flowVal.textContent = '--';
       this.flowVal.className = 'nte-sum__val';

@@ -16,11 +16,26 @@ const BAK = 'stk.watch.v0.bak';
 const VERSION = 1;
 const MAX_ITEMS = 50;
 
-/** 指数页默认展示的 9 个品种（原 6 个 + 日经 / KOSPI / 离岸人民币） */
+/**
+ * 指数页默认展示的品种
+ * 顺序＝新装用户的展示顺序；老用户只按「新增品种」增量补入
+ */
 const DEFAULT_INDEXES = [
-  'usNDX', 'usINX', 'sh000001', 'hf_GC', 'usDJI', 'hkHSTECH',
+  'usNDX', 'usINX', 'sh000001', 'usDJI', 'hkHSTECH',
+  'hf_XAU', 'fx_cnygold', 'hf_OIL', 'usDXY',
   'em_N225', 'em_KS11', 'fx_susdcnh',
 ];
+
+/**
+ * 增量播种标记
+ *
+ * 自选 / 指数页都存在 localStorage 里，光改 DEFAULT_* 对老用户无效——
+ * 他们升级后看到的还是旧清单。这里给个版本号：每次新增内置品种就 +1，
+ * 老数据第一次跑到新版本时把新增项补进去、把被替换的品种摘掉，只做一次。
+ */
+const SEED = 2;
+const SEED_ADD = ['hf_XAU', 'fx_cnygold', 'hf_OIL', 'usDXY'];
+const SEED_DROP = ['hf_GC'];   // v1.17 起黄金改用「现货 + 人民币账户金」，COMEX 不再默认
 
 /** 候选池里允许出现在指数页的 id（顺序即抽屉里的顺序） */
 const POOL_IDS = INDEX_POOL.map(s => s.id);
@@ -46,6 +61,7 @@ function blank() {
     }),
     nteam: [],            // 「国家队」独立自选清单，默认空，用户自行增删
     prefs: { ...DEFAULT_PREFS },
+    seed: SEED,
   };
 }
 
@@ -100,9 +116,41 @@ export function initStore() {
     state = blank();
   }
 
+  if (parsed) seedOnce();
+  else state.seed = SEED;
+
   registerSymbols(state.items);
   persist();
   return state;
+}
+
+/** 老数据升级时补入新内置品种（只跑一次，靠 state.seed 记住） */
+function seedOnce() {
+  if (state.seed === SEED) return;
+
+  for (const id of SEED_DROP) {
+    state.items = state.items.filter(it => it.id !== id);
+    state.indexIds = state.indexIds.filter(x => x !== id);
+  }
+
+  const have = new Set(state.items.map(it => it.id));
+  let at = state.items.length;
+  for (const id of SEED_ADD) {
+    if (have.has(id) || state.items.length >= MAX_ITEMS) continue;
+    const s = getSymbol(id);
+    if (!s || !s.id) continue;
+    state.items.push({
+      id, name: s.name, kind: s.kind, market: s.market,
+      digits: s.digits, flow: !!s.flow, at: at++,
+    });
+    have.add(id);
+  }
+
+  const idx = new Set(state.indexIds);
+  for (const id of SEED_ADD) if (POOL_SET.has(id)) idx.add(id);
+  state.indexIds = sanitizeIndexIds([...idx]);
+
+  state.seed = SEED;
 }
 
 /** 过滤掉不再存在的品种；老数据没有这个字段时补默认值 */
