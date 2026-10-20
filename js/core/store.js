@@ -98,7 +98,8 @@ export function initStore() {
   }
 
   if (parsed && Array.isArray(parsed.items)) {
-    const items = parsed.items.map(normalizeItem).filter(Boolean);
+    const rawItems = parsed.items;
+    const items = rawItems.map(normalizeItem).filter(Boolean);
     const seen = new Set();
     const nteam = Array.isArray(parsed.nteam)
       ? parsed.nteam.map(normalizeItem).filter(Boolean)
@@ -110,14 +111,19 @@ export function initStore() {
       items: items.filter(it => (seen.has(it.id) ? false : (seen.add(it.id), true))).slice(0, MAX_ITEMS),
       nteam: nteam.filter(it => (nteamSeen.has(it.id) ? false : (nteamSeen.add(it.id), true))).slice(0, MAX_ITEMS),
       prefs: { ...DEFAULT_PREFS, ...(parsed.prefs || {}) },
+      // 必须把播种标记读回来：漏了这一步 seedOnce() 每次启动都会以为「没播过」，
+      // 于是被用户删掉的 SEED_ADD 品种每次重进都会复活
+      seed: Number.isFinite(parsed.seed) ? parsed.seed : 0,
     };
-    if (!state.items.length) state.items = blank().items;
+    // 两种「空」要区别对待：
+    //   raw 里有条目但全部失效（品种下线）→ 退回默认，否则用户看到一片空白
+    //   raw 本来就是空数组（用户自己删光的）→ 尊重，不再塞回默认清单
+    if (!state.items.length && rawItems.length) state.items = blank().items;
   } else {
     state = blank();
   }
 
   if (parsed) seedOnce();
-  else state.seed = SEED;
 
   registerSymbols(state.items);
   persist();
@@ -173,6 +179,9 @@ function persist() {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
     persistable = false;
+    // 不能只悄悄降级：手机无痕/存储受限时用户改了半天，一刷新全没，
+    // 至少当场喊一声，让 TA 明白为什么「不保存」
+    import('../ui/toast.js').then(m => m.toast('本机无法保存数据（隐私模式或存储受限），改动刷新后会丢失', 4200)).catch(() => {});
   }
 }
 
@@ -258,6 +267,26 @@ export function takeItem(id) {
   persist();
   emit('remove');
   return { item, index: i };
+}
+
+/**
+ * 把默认清单补回来（已存在的跳过，不覆盖用户现有内容）
+ * 空自选现在是「用户主动删空」的合法状态，所以得留一条退路
+ * @returns {number} 操作后的自选数量
+ */
+export function restoreDefaultItems() {
+  initStore();
+  const have = new Set(state.items.map(it => it.id));
+  let at = state.items.length;
+  for (const it of blank().items) {
+    if (have.has(it.id) || state.items.length >= MAX_ITEMS) continue;
+    state.items.push({ ...it, at: at++ });
+    have.add(it.id);
+  }
+  registerSymbols(state.items);
+  persist();
+  emit('add');
+  return state.items.length;
 }
 
 /** 指数页当前展示的品种 */

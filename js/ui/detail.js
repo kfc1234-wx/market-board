@@ -6,6 +6,7 @@ import { getSymbol, kindLabel, codeText, isPreset } from '../data/symbols.js';
 import { getQuotes } from '../data/quotes.js';
 import { getDividend } from '../data/dividend.js';
 import { getMinute, getKline, fillPrevClose } from '../data/series.js';
+import { analyze } from '../data/indicators.js';
 import { marketState, effectiveState, stateText, shortTime } from '../market/session.js';
 import { TrendChart } from '../chart/trend.js';
 import { KlineChart } from '../chart/kline.js';
@@ -246,16 +247,18 @@ export class Detail {
     this.bidRows = [];
     this.depthRatio = h('span.depth__ratio', { text: '' });
 
-    const col = (labels, sink) => h('div.depth__col', {}, labels.map(label => {
+    const col = (labels, sink, cls) => h('div.depth__col' + (cls ? '.' + cls : ''), {}, labels.map(label => {
       const p = h('span.depth__p', { text: '--' });
       const v = h('span.depth__v', { text: '--' });
       sink.push({ p, v });
       return h('div.depth__row', {}, [h('span.depth__tag', { text: label }), p, v]);
     }));
 
-    // 卖盘自上而下显示卖五→卖一（价格由高到低，视觉上向现价收拢）
-    const askLabels = ['卖五', '卖四', '卖三', '卖二', '卖一'];
+    // 买一 / 卖一并排放在最上方，往下依次买二卖二……
+    // 原先是左列卖五→卖一、右列买一→买五，「卖一」被压到最后一行，
+    // 盯盘时最该看的两档反而一头一尾，所以改成两列同为「一档在最上」
     const bidLabels = ['买一', '买二', '买三', '买四', '买五'];
+    const askLabels = ['卖一', '卖二', '卖三', '卖四', '卖五'];
 
     // 「实时」小胶囊：拖动光标回看历史时盘口仍常驻且继续刷新，
     // 必须标一下它对应的是此刻而不是光标那一刻，否则等于张冠李戴
@@ -264,8 +267,8 @@ export class Detail {
     depthTitle.appendChild(this.depthLiveEl);
 
     this.depthGridEl = h('div.depth__grid', {}, [
-      col(askLabels, this.askRows),
-      col(bidLabels, this.bidRows),
+      col(bidLabels, this.bidRows, 'depth__col--bid'),
+      col(askLabels, this.askRows, 'depth__col--ask'),
     ]);
     // 拿不到五档时不再整块消失：指数/期货/汇率这类是源上就没有，
     // 个股/ETF 则是暂时取不到，两种要用不同措辞，别让人以为页面坏了
@@ -317,9 +320,9 @@ export class Detail {
       row.p.className = 'depth__p ' + (base ? dirClass(item.p - base) : '');
     };
 
-    // asks 是买一~卖一正序（下标 0 = 卖一），左列要卖五→卖一，所以反着填
-    for (let i = 0; i < 5; i++) paintRow(this.askRows[i], asks[4 - i]);
+    // bids / asks 都是「一档→五档」正序，两列同序往下填
     for (let i = 0; i < 5; i++) paintRow(this.bidRows[i], bids[i]);
+    for (let i = 0; i < 5; i++) paintRow(this.askRows[i], asks[i]);
 
     // 委比 =（委买 − 委卖）/（委买 + 委卖）
     const sumB = bids.reduce((s, x) => s + (x.v || 0), 0);
@@ -644,11 +647,99 @@ export class Detail {
           onHover: info => this.onKlineHover(info),
         });
         this.chart.setData(bars, { keepView: false });
+        this.renderIndicators(bars, key);
       }
     } catch (e) {
       if (seq !== this.reqSeq) return;
       this.showState(this.errorText(key, e));
     }
+  }
+
+  /**
+   * 技术指标解析卡（只在 K 线模式追加在图表下方）
+   *
+   * 只陈述指标此刻处于什么状态，不做方向预测——MACD / KDJ / RSI 全是滞后量，
+   * 写成「必涨必跌」只会害人。综合倾向也只是「偏多 / 偏空」的描述，不是买卖信号。
+   */
+  renderIndicators(bars, period) {
+    const res = analyze(bars, this._digits());
+    if (!res) return;
+
+    const periodText = { day: '日K', week: '周K', month: '月K' }[period] || '';
+
+    // 价格类（MA / BOLL）跟标的精度走，无量纲的 MACD / KDJ / RSI 固定两位
+    const dps = this._digits();
+    const fp = v => (Number.isFinite(v) ? v.toFixed(dps) : '--');
+    const fi = v => (Number.isFinite(v) ? v.toFixed(2) : '--');
+
+    const row = (k, v, s, tone) => h('div.ind__row', {}, [
+      h('span.ind__k', { text: k }),
+      h('span.ind__v', { text: v }),
+      h('span.ind__s' + (tone ? '.is-' + tone : ''), { text: s }),
+    ]);
+
+    const rows = [];
+
+    const ma = res.ma;
+    if (ma && ma.align !== 'none') {
+      rows.push(row('MA',
+        `${fp(ma.ma5)} / ${fp(ma.ma10)} / ${fp(ma.ma20)}`,
+        ma.text,
+        ma.align === 'bull' ? 'up' : ma.align === 'bear' ? 'down' : ''));
+    }
+
+    const md = res.macd;
+    if (md) {
+      rows.push(row('MACD',
+        `${fi(md.dif)} / ${fi(md.dea)}`,
+        md.cross === 'gold' ? '刚金叉'
+          : md.cross === 'dead' ? '刚死叉'
+            : (md.dif > md.dea ? 'DIF 在上' : 'DIF 在下'),
+        md.dif > md.dea ? 'up' : 'down'));
+    }
+
+    const kj = res.kdj;
+    if (kj) {
+      rows.push(row('KDJ', `${fi(kj.k)} / ${fi(kj.d)} / ${fi(kj.j)}`, kj.text,
+        kj.state === 'oversold' ? 'up' : kj.state === 'overbought' ? 'down' : ''));
+    }
+
+    const rs = res.rsi;
+    if (rs) {
+      rows.push(row('RSI',
+        `${fi(rs.rsi6)} / ${fi(rs.rsi12)} / ${fi(rs.rsi24)}`,
+        rs.text,
+        rs.state === 'strong' ? 'up' : rs.state === 'weak' ? 'down' : ''));
+    }
+
+    const bl = res.boll;
+    if (bl) {
+      rows.push(row('BOLL',
+        `${fp(bl.up)} / ${fp(bl.mid)} / ${fp(bl.low)}`,
+        bl.text,
+        (bl.pos === 'upper' || bl.pos === 'above') ? 'up'
+          : (bl.pos === 'lower' || bl.pos === 'below') ? 'down' : ''));
+    }
+
+    if (!rows.length) return;
+
+    const bull = res.bias.label === 'bull' || res.bias.label === 'lean-bull';
+    const bear = res.bias.label === 'bear' || res.bias.label === 'lean-bear';
+
+    const card = h('div.ind', {}, [
+      h('div.ind__head', {}, [
+        h('span.ind__title', { text: '技术指标' }),
+        h('span.ind__period', { text: periodText }),
+        h('span.ind__bias' + (bull ? '.is-up' : bear ? '.is-down' : ''),
+          { text: res.bias.text }),
+      ]),
+      h('div.ind__rows', {}, rows),
+      h('p.ind__note', {
+        text: '指标基于历史收盘价计算，天生滞后于价格；以上只描述当前状态，不构成买卖建议。',
+      }),
+    ]);
+
+    this.bodyEl.appendChild(card);
   }
 
   _digits() {

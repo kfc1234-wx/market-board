@@ -1800,3 +1800,114 @@
 
 .dist__seg[hidden],
 .dist__bar[hidden] { display: none; }
+
+/* ============================================================
+   指数页：休市品种收起
+   .icard 是 display:flex，会盖掉 [hidden] 的默认样式，得显式压回去
+   ============================================================ */
+.icard[hidden] { display: none; }
+
+.idxhide {
+  display: block;
+  width: 100%;
+  margin: 10px 0 0;
+  padding: 11px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  text-align: center;
+  transition: background .14s ease, color .14s ease;
+}
+.idxhide:active { background: var(--bg-elev-2); color: var(--text-2); }
+.idxhide[hidden] { display: none; }
+
+/* 盘口两列：买盘偏红、卖盘偏绿，一眼分边（价格本身已按昨收染红绿，标签只做弱提示） */
+.depth__col--bid .depth__tag { color: rgba(255, 111, 127, .74); }
+.depth__col--ask .depth__tag { color: rgba(52, 192, 138, .74); }
+
+/* ============================================================
+   技术指标解析（K 线模式下追加在图表下方）
+   详情页原本是固定的 flex 竖排，加了这块后小屏可能超高，
+   给 .detail__body 开竖向滚动兜底；canvas 已是 touch-action:pan-y，
+   页面纵向滚动和图表横向拖动不冲突
+   ============================================================ */
+.detail__body {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.ind {
+  flex: 0 0 auto;
+  /* 这块每多 10px，上方图表就少 10px——5 行指标压到约 145px，
+     给 canvas 留出 240 以上，看 K 线的地方不能被解读文字挤没了 */
+  padding: 7px var(--gutter) calc(var(--sab) + 7px);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.ind__head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.ind__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.ind__period {
+  font-size: 10px;
+  color: var(--text-3);
+}
+.ind__bias {
+  margin-left: auto;
+  padding: 1.5px 8px;
+  border-radius: 99px;
+  background: var(--bg-elev-2);
+  font-size: 10px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ind__bias.is-up { color: var(--up); background: rgba(255, 111, 127, .1); }
+.ind__bias.is-down { color: var(--down); background: rgba(52, 192, 138, .1); }
+
+.ind__rows { margin-top: 4px; }
+.ind__row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+.ind__k {
+  font-size: 10px;
+  color: var(--text-3);
+  letter-spacing: .02em;
+}
+.ind__v {
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ind__s {
+  font-size: 10px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.ind__s.is-up { color: rgba(255, 111, 127, .82); }
+.ind__s.is-down { color: rgba(52, 192, 138, .82); }
+
+.ind__note {
+  margin: 4px 0 0;
+  font-size: 9px;
+  line-height: 1.45;
+  color: var(--text-3);
+  opacity: .8;
+}

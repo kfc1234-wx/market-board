@@ -1,7 +1,7 @@
 /** 应用入口 */
 
 import { qs } from './util/dom.js';
-import { initStore, applyTheme, getPrefs, setPref, subscribe } from './core/store.js';
+import { initStore, applyTheme, getPrefs, setPref, subscribe, restoreDefaultItems } from './core/store.js';
 import { createRouter } from './core/router.js';
 import { Board } from './ui/board.js';
 import { Indices } from './ui/indices.js';
@@ -147,6 +147,10 @@ const boot = () => {
 
   // ---------- 空态按钮 ----------
   qs('#board-empty-btn')?.addEventListener('click', () => router.go('/search'));
+  qs('#board-empty-restore')?.addEventListener('click', () => {
+    const n = restoreDefaultItems();
+    toast(n ? `已恢复默认清单（${n} 个）` : '默认清单已在列表里');
+  });
 
   // ---------- 下拉刷新 ----------
   createPullRefresh({

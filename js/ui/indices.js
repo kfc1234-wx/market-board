@@ -21,7 +21,7 @@ import { Poller } from '../core/poller.js';
 import { tickTo, setText } from './ticker.js';
 import { drawSpark, drawRange, clearSpark } from '../chart/spark.js';
 import { watchResize } from '../chart/base.js';
-import { marketState, parseQuoteTime } from '../market/session.js';
+import { marketState, effectiveState, parseQuoteTime } from '../market/session.js';
 import { getIndexIds, getIndexPool, toggleIndex, hasIndex, subscribe } from '../core/store.js';
 
 const SPARK_TTL = 50_000;
@@ -42,6 +42,9 @@ export class Indices {
     this.sparkLoading = false;
     this.sparkTimer = 0;
     this.unwatch = null;
+    // 休市品种默认收起；用户点过「显示全部」后本次会话不再自动收
+    this.showAll = false;
+    this.visSig = undefined;
 
     this.poller = new Poller({
       getIds: () => this.ids,
@@ -102,16 +105,78 @@ export class Indices {
 
     this.listEl.appendChild(grid);
 
+    // 休市收起后要留一个「有多少被藏起来了」的入口，否则用户会以为品种丢了
+    this.visSig = undefined;
+    if (this.hideHint) this.hideHint.remove();
+    this.hideHint = h('button.idxhide', {
+      type: 'button',
+      onclick: () => {
+        this.showAll = true;
+        this.applyVisibility();
+        this.loadSparks(true);
+      },
+    });
+    this.hideHint.hidden = true;
+    this.listEl.appendChild(this.hideHint);
+
     this.listEl.appendChild(h('p.idxnote', {
       text: '数据来源：腾讯行情 / CNBC / 新浪财经 / feargreedchart。折线为当日分时；'
         + '日经225、韩国KOSPI 与美元指数的数据源只提供实时报价，卡片内为今日振幅条'
         + '（横条=最低~最高，圆点=现价，虚线=昨收）。离岸人民币按「美元兑人民币」报价，'
         + '数值上升=人民币走弱；人民币账户黄金按 元/克 折算，不含银行点差。'
+        + '休市品种默认收起，开盘后自动出现。'
         + '红涨绿跌，行情有数秒至数分钟延迟，仅供参考，不构成投资建议。',
     }));
 
+    this.applyVisibility();
+
     // 布局尺寸变了，补一次重绘
     requestAnimationFrame(() => this.repaintSparks());
+  }
+
+  /**
+   * 当前应隐藏（休市）的品种
+   *
+   * 全被隐藏时返回空集：宁可多显示几张收盘卡，也不要给用户一个空页面。
+   * 判断用 effectiveState 而不是 marketState——时段上该开盘但行情时间落后
+   * 十几分钟的（节假日、临时休市）也算休市，否则会留一张永不更新的卡。
+   */
+  hiddenSet() {
+    if (this.showAll) return new Set();
+    const byMarket = new Map();
+    const out = new Set();
+    for (const id of this.ids) {
+      const m = getSymbol(id).market;
+      if (!byMarket.has(m)) byMarket.set(m, effectiveState(this.quotes.get(id), m));
+      if (byMarket.get(m) === 'closed') out.add(id);
+    }
+    return out.size >= this.ids.length ? new Set() : out;
+  }
+
+  applyVisibility() {
+    if (!this.nodes.size) return;
+
+    const hidden = this.hiddenSet();
+    const sig = [...hidden].sort().join(',');
+    if (sig === this.visSig) return;
+
+    const first = this.visSig === undefined;
+    this.visSig = sig;
+
+    let n = 0;
+    for (const [id, node] of this.nodes) {
+      const hide = hidden.has(id);
+      node.card.hidden = hide;
+      if (hide) n++;
+    }
+
+    if (this.hideHint) {
+      this.hideHint.hidden = !n;
+      if (n) this.hideHint.textContent = `已隐藏 ${n} 个休市品种 · 点此显示全部`;
+    }
+
+    // 卡片从隐藏变可见时，canvas 之前在 display:none 里量不到尺寸，必须补画
+    if (!first) requestAnimationFrame(() => this.repaintSparks());
   }
 
   /** 勾选变更后重建列表 */
@@ -287,12 +352,18 @@ export class Indices {
       node.amt.className = 'icard__amt ' + dirClass(q.pct);
       setText(node.amt, fmtChange(q.change, digits));
     }
+
+    // 每轮报价刷新都重新判一次开闭市：15:00 收盘、21:30 开盘都能自己触发
+    this.applyVisibility();
   }
 
   setStatus() {
     if (!this.statusEl) return;
 
-    const markets = this.ids.map(id => getSymbol(id).market);
+    // 只统计露在屏上的市场：全盘休市时还报「盘中」会让人以为数据卡了
+    const hidden = this.hiddenSet();
+    const shown = this.ids.filter(id => !hidden.has(id));
+    const markets = (shown.length ? shown : this.ids).map(id => getSymbol(id).market);
     const open = markets.some(m => ['open', 'pre', 'post'].includes(marketState(m)));
     if (open) {
       this.statusEl.textContent = '盘中';
@@ -314,9 +385,13 @@ export class Indices {
     if (this.sparkLoading) return;
     this.sparkLoading = true;
 
+    // 收起的休市品种不用拉分时：那条线当天不会再动，拉了也是白花请求
+    const hidden = this.hiddenSet();
+
     try {
       for (const id of this.ids) {
         if (!this.active && !force) break;
+        if (hidden.has(id) && !force) continue;
 
         const cached = this.sparks.get(id);
         const fresh = cached && !force && Date.now() - cached.at < SPARK_TTL;

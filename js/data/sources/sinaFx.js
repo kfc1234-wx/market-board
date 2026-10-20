@@ -64,6 +64,20 @@ function windowStart(rows) {
 }
 
 /**
+ * 有些品种在 scale > 1 时价格被压了 10000 倍，必须补回来
+ *
+ * 实测 fx_sxaucny（人民币账户黄金）：
+ *   scale=1   → 27578.599   （与 hq.sinajs.cn 实时价一致，单位 元/盎司）
+ *   scale=5   → 2.757860    （÷10000）
+ *   scale=240 → 2.757860    （÷10000）
+ * 连续三次采样比值恒为 10000.00，不是抖动。不补的话再除以 31.1034768，
+ * 「元/克」会算成 0.09，K 线也全在 0.08 附近。
+ *
+ * 按品种声明而不是无脑乘，汇率类（fx_susdcnh）实测比值是 1.0000，不能碰。
+ */
+const BAR_MUL = { fx_sxaucny: 10000 };
+
+/**
  * 取分钟线原始行
  * @param {string} code 如 fx_susdcnh
  * @param {number} datalen
@@ -76,18 +90,20 @@ async function fetchMinRows(code, datalen = 320, scale = 5) {
   const raw = await jsonpVar(url, cb, 9000);
 
   const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
+  // scale=1 是真实量级，不用乘
+  const mul = scale > 1 ? (BAR_MUL[code] || 1) : 1;
   const out = [];
   for (const r of rows) {
     const d = String(r?.d || '');
-    const c = num(r?.c);
+    const c = num(r?.c) * mul;
     if (!d || !(c > 0)) continue;
     out.push({
       d,
       day: d.slice(0, 10),
       time: d.slice(11, 16).replace(':', ''),
-      o: num(r.o),
-      h: num(r.h),
-      l: num(r.l),
+      o: num(r.o) * mul,
+      h: num(r.h) * mul,
+      l: num(r.l) * mul,
       c,
     });
   }
