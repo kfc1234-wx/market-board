@@ -10,7 +10,7 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.23.0';
+const VERSION = 'v1.27.0';
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [
@@ -48,11 +48,15 @@ const ASSETS = [
   './js/chart/trend.js',
   './js/chart/kline.js',
   './js/chart/flowbar.js',
+  './js/chart/yieldline.js',
   './js/chart/spark.js',
   './js/ui/board.js',
   './js/ui/indices.js',
   './js/ui/bonds.js',
   './js/ui/nteam.js',
+  './js/ui/ntsum.js',
+  './js/ui/hao.js',
+  './js/data/hao.js',
   './js/ui/distribution.js',
   './js/ui/detail.js',
   './js/ui/flow.js',

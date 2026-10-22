@@ -41,6 +41,9 @@ function serial(fn) {
   return task;
 }
 
+/** 拉多少天：国家队汇总比照最长要 30 日窗口，40 天留出停牌 / 节假日的余量 */
+const HISTORY_DAYS = 40;
+
 /**
  * 获取资金流
  * @param {string} id
@@ -63,7 +66,7 @@ export async function getFlow(id, opt = {}) {
   }
 
   try {
-    const rows = await serial(() => fetchFlow(id, 20));
+    const rows = await serial(() => fetchFlow(id, HISTORY_DAYS));
     cache.set(id, { t: Date.now(), data: rows });
     health.set(id, { fails: 0, until: 0 });
     return { rows, stats: flowStats(rows), stale: false };

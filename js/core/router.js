@@ -3,7 +3,7 @@
  *  用 hash 而非 history：静态托管零配置，刷新不会 404
  */
 
-const TABS = ['board', 'indices', 'bonds', 'nteam', 'search', 'settings'];
+const TABS = ['board', 'indices', 'bonds', 'nteam', 'hao', 'search', 'settings'];
 
 export function createRouter(onChange) {
   const parse = () => {

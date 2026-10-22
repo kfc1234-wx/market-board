@@ -89,10 +89,22 @@ export function readPalette() {
   };
 }
 
-/** 把 #RRGGBB 转 rgba */
-export function withAlpha(hex, alpha) {
-  if (!hex) return `rgba(255,255,255,${alpha})`;
-  const h = hex.replace('#', '');
+/**
+ * 给颜色套一个透明度
+ *
+ * 同时接受 #RGB / #RRGGBB 和 rgb()/rgba() 两种写法。
+ * 后一种是必须的：--chart-grid 本身就是 rgba(60,42,60,.10)，
+ * 当成十六进制去 parseInt 会得到 NaN，而 canvas 对非法的 strokeStyle
+ * 是**静默忽略**的——不会报错，只会沿用上一次的颜色。
+ * 结果就是浅色主题下网格线变成一条条黑线，很难一眼看出原因。
+ */
+export function withAlpha(color, alpha) {
+  if (!color) return `rgba(255,255,255,${alpha})`;
+  const c = String(color).trim();
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(c);
+  if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+
+  const h = c.replace('#', '');
   if (h.length === 3) {
     const r = parseInt(h[0] + h[0], 16);
     const g = parseInt(h[1] + h[1], 16);

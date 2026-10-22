@@ -7,6 +7,7 @@ import { Board } from './ui/board.js';
 import { Indices } from './ui/indices.js';
 import { Bonds } from './ui/bonds.js';
 import { NTeam } from './ui/nteam.js';
+import { Hao } from './ui/hao.js';
 import { Detail } from './ui/detail.js';
 import { initSearch } from './ui/search.js';
 import { initSettings } from './ui/settings.js';
@@ -20,11 +21,12 @@ const pages = {
   indices: qs('#page-indices'),
   bonds: qs('#page-bonds'),
   nteam: qs('#page-nteam'),
+  hao: qs('#page-hao'),
   search: qs('#page-search'),
   settings: qs('#page-settings'),
 };
 
-const TAB_NAMES = ['board', 'indices', 'bonds', 'nteam', 'search', 'settings'];
+const TAB_NAMES = ['board', 'indices', 'bonds', 'nteam', 'hao', 'search', 'settings'];
 
 let currentTab = 'board';
 
@@ -72,6 +74,13 @@ const boot = () => {
     editBtn: qs('#nteam-edit'),
     onOpen: id => router.go('/s/' + id),
     onAdd: () => router.go('/search'),
+  });
+
+  // ---------- 好人好股 ----------
+  const hao = new Hao({
+    listEl: qs('#hao-list'),
+    statusEl: qs('#hao-status'),
+    onOpen: id => router.go('/s/' + id),
   });
 
   // ---------- 详情 ----------
@@ -136,6 +145,9 @@ const boot = () => {
     if (name === 'nteam') nteam.start();
     else nteam.stop();
 
+    if (name === 'hao') hao.start();
+    else hao.stop();
+
     if (name === 'settings') settings.render();
     if (name === 'search') search.focus();
   };
@@ -173,6 +185,11 @@ const boot = () => {
     indicator: qs('#nteam-pull'),
     onRefresh: () => nteam.refreshNow(),
   });
+  createPullRefresh({
+    scroller: qs('#hao-list'),
+    indicator: qs('#hao-pull'),
+    onRefresh: () => hao.refreshNow(),
+  });
 
   // ---------- 排序按钮初始文案 ----------
   const sortText = { pctDesc: '涨跌幅', chgDesc: '涨跌额', flowDesc: '净流入', nameAsc: '名称' };
@@ -208,7 +225,7 @@ const boot = () => {
   registerSW();
 
   // 调试用
-  window.__app = { board, indices, bonds, nteam, detail, router };
+  window.__app = { board, indices, bonds, nteam, hao, detail, router };
 };
 
 function registerSW() {

@@ -1911,3 +1911,862 @@
   color: var(--text-3);
   opacity: .8;
 }
+
+/* ============================================================
+   国债收益率走势（点期限行 / Hero 打开）
+   收益率是日频单值，没有开高低，所以画的是收盘线 + MA + 每日 bp 柱
+   ============================================================ */
+.brow--tap { cursor: pointer; border-radius: 6px; transition: background .12s ease; }
+.brow--tap:active { background: var(--bg-elev-2); }
+.bhero__side--tap { cursor: pointer; }
+
+.bd {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: slideIn .26s cubic-bezier(.32, .9, .35, 1);
+}
+/* display:flex 会盖掉 [hidden] 的默认 display:none，必须显式压回去 */
+.bd[hidden] { display: none; }
+
+.bd__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: calc(var(--sat) + 10px) var(--gutter) 4px;
+}
+.bd__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-left: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+}
+.bd__back:active { background: var(--bg-elev-2); }
+.bd__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bd__hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px var(--gutter) 0;
+}
+.bd__val {
+  font-family: var(--font-num);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.bd__chg {
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.bd__date {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+}
+
+.bd__ranges {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 11px var(--gutter) 0;
+}
+.bd__range {
+  padding: 4.5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+}
+.bd__range.is-on {
+  border-color: transparent;
+  background: var(--bg-elev-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 均线图例：贴在窗口切换右侧，不另占一行 */
+.bd__chart {
+  flex: 1 1 auto;
+  min-height: 120px;
+  margin: 10px var(--gutter) 0;
+  position: relative;
+}
+.bd__chart canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 十字光标：桌面端提示可悬停读取，触摸端由 pointer 事件处理 */
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.bd__stats {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 12px var(--gutter) 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.bd__stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bd__stat-k { font-size: 10px; color: var(--text-3); }
+.bd__stat-v {
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd__note {
+  flex: 0 0 auto;
+  margin: 10px var(--gutter) calc(var(--sab) + 14px);
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+  opacity: .82;
+}
+
+/* ================= 国家队 · 汇总比照页 =================
+ *
+ * 从底部汇总卡的两格进入的全屏二级页。
+ * 行结构与列表页对齐（名称左、数值右），中间一条横向条形做比照：
+ * 成交量用单向条（量只有大小），资金量用中轴双向条（正负要能一眼分开）；
+ * 资金量若也画单向条，正负混排时只能比绝对值，方向会看错。
+ */
+.ns {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: slideIn .26s cubic-bezier(.32, .9, .35, 1);
+}
+
+.ns__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: calc(var(--sat) + 10px) var(--gutter) 4px;
+}
+.ns__back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+}
+.ns__back:active { background: var(--bg-elev-2); }
+.ns__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.2px;
+}
+
+/* 窗口切换：五格等分，一眼能扫完 */
+.ns__tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 9px var(--gutter) 0;
+}
+.ns__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  transition: background .16s, color .16s, border-color .16s;
+}
+.ns__tab.is-on {
+  border-color: transparent;
+  background: var(--bg-elev-2);
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* 摘要：左边区间，右边合计 */
+.ns__meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px var(--gutter) 0;
+  font-size: 11px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.ns__meta-r {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* 图例 */
+.ns__lg {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px var(--gutter) 0;
+  font-size: 9.5px;
+  color: var(--text-3);
+}
+.ns__lg-item { display: inline-flex; align-items: center; gap: 4px; }
+.ns__dot {
+  width: 9px;
+  height: 4px;
+  border-radius: 2px;
+  display: block;
+  flex: none;
+}
+.ns__dot--vol { background: var(--accent-3); }
+.ns__dot--flow { background: linear-gradient(90deg, var(--down), var(--up)); }
+.ns__sort { margin-left: auto; flex: none; opacity: .8; }
+
+/* 列表 */
+.ns__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px var(--gutter) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.ns__row { min-width: 0; }
+
+.ns__l1 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.ns__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ns__tag {
+  flex: none;
+  font-size: 8.5px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text-3);
+  background: var(--bg-elev-3);
+  transform: translateY(-.5px);
+}
+.ns__val {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.2px;
+}
+
+/* 条形 */
+.ns__track {
+  position: relative;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 4px;
+  background: var(--bg-elev-2);
+  overflow: hidden;
+}
+.ns__axis {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -.5px;
+  background: var(--line-strong);
+}
+.ns__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  transition: width .4s cubic-bezier(.22, .8, .3, 1);
+}
+.ns__fill--up { background: var(--up); }
+.ns__fill--dn { background: var(--down); }
+.ns__fill--vol {
+  left: 0;
+  background: var(--accent-3);
+  opacity: .8;
+}
+
+.ns__l2 {
+  margin-top: 4px;
+  font-size: 10px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.ns__row.is-empty .ns__name { color: var(--text-3); }
+
+.ns__note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px var(--gutter) calc(var(--sab) + 12px);
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+  opacity: .82;
+}
+
+/* 空态 */
+.ns__empty {
+  margin: 44px auto 0;
+  text-align: center;
+  color: var(--text-3);
+}
+.ns__empty-title { margin: 0 0 6px; font-size: 13px; color: var(--text-2); }
+.ns__empty-sub { margin: 0; font-size: 11px; }
+
+/* 汇总卡两格可点：右上角一个细箭头示意「还能往里走」 */
+.nte-sum__cell--tap {
+  position: relative;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.nte-sum__cell--tap::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  top: 2px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--text-3);
+  border-top: 1.5px solid var(--text-3);
+  transform: rotate(45deg);
+  opacity: .45;
+}
+.nte-sum__cell--tap:active { background: var(--bg-elev-2); }
+
+/* ================= 好人好股 · 概览 + 涨跌分布 =================
+ *
+ * 版式刻意对齐国家队页的「全 A 涨跌分布」：同一套涨/平/跌比例带、
+ * 五对左右对称档位。两页放一起时能直接对上眼，不需要重新学一遍读法。
+ * 唯一的结构差异是这里每一档都能点——全 A 那 5000 多只没有可跳转的清单，
+ * 这份 80 只的名单有。
+ */
+.hs {
+  margin: 4px var(--gutter) 10px;
+  padding: 13px 14px 12px;
+  border-radius: var(--radius);
+  background: var(--card-grad);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card), var(--hl);
+}
+
+.hs__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hs__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+.hs__count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.hs__time {
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.hs__main {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 8px;
+}
+.hs__median {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+.hs__k {
+  font-size: 10.5px;
+  color: var(--text-3);
+  flex: none;
+}
+.hs__median-v {
+  font-family: var(--font-num);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.02;
+  letter-spacing: -.5px;
+}
+.hs__avg {
+  margin-left: auto;
+  flex: none;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 涨/平/跌 比例带：三段都是按钮，直接点进大区间名单 */
+.hs__split {
+  display: flex;
+  gap: 1.5px;
+  height: 8px;
+  margin-top: 11px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--bg-elev-2);
+}
+.hs__seg {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border: 0;
+  padding: 0;
+  transition: flex-grow .35s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.hs__seg--up { background: var(--up); }
+.hs__seg--flat { background: var(--flat); }
+.hs__seg--dn { background: var(--down); }
+.hs__seg:active { filter: brightness(1.25); }
+
+.hs__legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+}
+.hs__lg {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 10.5px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+.hs__lg--up { color: var(--up); }
+.hs__lg--flat { color: var(--text-3); }
+.hs__lg--dn { color: var(--down); }
+.hs__lg:active { opacity: .6; }
+
+.hs__note {
+  margin: 0 var(--gutter) 12px;
+  font-size: 9.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+  opacity: .82;
+}
+
+/* ---------- 分布卡 ---------- */
+.hdist {
+  margin: 4px var(--gutter) 10px;
+  padding: 13px 14px 11px;
+  border-radius: var(--radius);
+  background: var(--card-grad);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card), var(--hl);
+}
+.hdist__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.hdist__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+.hdist__hint {
+  font-size: 9.5px;
+  color: var(--text-3);
+  flex: none;
+}
+
+.hdist__rows-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 -4px;
+}
+
+/* 一行两半区：左跌（绿）右涨（红），各自是独立按钮。
+   列宽与全 A 分布卡一致（32/1fr/44），两页并排看时档位能对齐 */
+.hdist__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.hdist__half {
+  display: grid;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .14s;
+}
+.hdist__half--dn { grid-template-columns: 32px minmax(0, 1fr) 44px; }
+.hdist__half--up { grid-template-columns: 44px minmax(0, 1fr) 32px; }
+.hdist__half:active { background: var(--bg-elev-2); }
+.hdist__half.is-empty { opacity: .34; }
+
+.hdist__num {
+  font-family: var(--font-num);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* 数字贴着条形那一侧，外沿留给留白——和全 A 分布卡同一套对齐 */
+.hdist__num--dn { color: var(--down); text-align: right; }
+.hdist__num--up { color: var(--up); text-align: left; }
+
+.hdist__label {
+  font-size: 10px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 左右档位文字常常一样（5~7% / 3~5%），靠颜色分边比加分隔符更省地方 */
+.hdist__half--dn .hdist__label { color: rgba(52, 192, 138, .72); }
+.hdist__half--up .hdist__label { color: rgba(255, 111, 127, .72); }
+
+.hdist__track {
+  display: flex;
+  align-items: center;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--bg-elev-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03);
+  overflow: hidden;
+}
+.hdist__track--l { justify-content: flex-end; }
+.hdist__track--r { justify-content: flex-start; }
+
+.hdist__bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width .35s ease;
+}
+.hdist__bar--dn { background: var(--down); }
+.hdist__bar--up { background: var(--up); }
+
+.hdist__all {
+  width: 100%;
+  margin-top: 9px;
+  padding: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+}
+.hdist__all:active { background: var(--bg-elev-2); }
+
+/* 两极速览：领涨 / 领跌各三只，点击直接进详情 */
+.hpick {
+  margin: 4px var(--gutter) 10px;
+  padding: 13px 14px 11px;
+  border-radius: var(--radius);
+  background: var(--card-grad);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card), var(--hl);
+}
+.hpick__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hpick__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+.hpick__hint {
+  font-size: 9.5px;
+  color: var(--text-3);
+  flex: none;
+}
+
+.hpick__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 9px;
+}
+.hpick__side { min-width: 0; }
+.hpick__k {
+  font-size: 10px;
+  font-weight: 600;
+}
+.hpick__k--up { color: var(--up); }
+.hpick__k--dn { color: var(--down); }
+
+.hpick__col {
+  margin-top: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hpick__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.hpick__row:active { opacity: .6; }
+.hpick__name {
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.hpick__pct {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-num);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.2px;
+}
+.hpick__empty {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 4px 0;
+}
+
+/* ================= 好人好股 · 区间明细页 ================= */
+.hb {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: slideIn .26s cubic-bezier(.32, .9, .35, 1);
+}
+
+.hb__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: calc(var(--sat) + 10px) var(--gutter) 6px;
+}
+.hb__back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+}
+.hb__back:active { background: var(--bg-elev-2); }
+
+.hb__titles { min-width: 0; }
+.hb__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.2px;
+}
+.hb__sub {
+  margin-top: 1px;
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.hb__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px var(--gutter) calc(var(--sab) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hb__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--card-grad);
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .14s;
+}
+.hb__row:active { background: var(--bg-elev-2); }
+
+.hb__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.hb__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hb__meta {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.hb__code {
+  font-size: 9.5px;
+  color: var(--text-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+/* 股息率：用金色 —— 涨跌红绿已被占用，再塞一个同色系会读不出是哪个维度 */
+.hb__div {
+  flex: none;
+  font-size: 9.5px;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: color .18s;
+}
+.hb__div::before {
+  content: '·';
+  padding: 0 5px;
+  opacity: .55;
+}
+.hb__div.is-on {
+  color: var(--warn);
+  font-weight: 600;
+}
+.hb__div.is-off { opacity: .7; }
+.hb__right {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.hb__price {
+  font-family: var(--font-num);
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.hb__pct {
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.2px;
+}
+
+.hb__empty {
+  margin: 56px auto 0;
+  text-align: center;
+  color: var(--text-3);
+}
+.hb__empty-title { margin: 0 0 6px; font-size: 13px; color: var(--text-2); }
+.hb__empty-sub { margin: 0; font-size: 11px; }

@@ -17,9 +17,17 @@
 import { h, clear } from '../util/dom.js';
 import { shortDate } from '../util/format.js';
 import { getYields, peekYields, invalidateYields, bp, TENORS } from '../data/bonds.js';
+import { drawYieldLine } from '../chart/yieldline.js';
 
 const REFRESH_MS = 10 * 60 * 1000;
 const DEFAULT_TERM = '10';
+
+/** 详情页可选的观察窗口（按交易日根数截尾部） */
+const RANGES = [
+  { key: '1m', label: '1月', n: 22 },
+  { key: '3m', label: '3月', n: 66 },
+  { key: '6m', label: '6月', n: 130 },
+];
 
 /** 收益率 → 千分位保留 3 位（国债报价习惯：1.648%） */
 const fmtYield = v => (Number.isFinite(v) && v > 0 ? v.toFixed(3) : '--');
@@ -45,6 +53,7 @@ export class Bonds {
     this.active = false;
     this.data = null;
     this.term = DEFAULT_TERM;   // Hero 当前展示的期限
+    this.rangeKey = '3m';       // 走势详情默认看 3 个月
     this.nodes = new Map();     // tenorKey -> { val, chg }
     this.termBtns = new Map();  // tenorKey -> button
     this.timer = 0;
@@ -87,12 +96,20 @@ export class Bonds {
 
     const hero = h('section.bhero', {}, [
       h('div.bhero__pair', {}, [
-        h('div.bhero__side', {}, [
+        h('div.bhero__side.bhero__side--tap', {
+          role: 'button',
+          tabindex: '0',
+          onclick: () => this.openDetail('cn', this.term),
+        }, [
           h('div.bhero__label', {}, [h('i.bdot.bdot--cn'), this.cnLabel]),
           this.heroCn,
           this.heroCnChg,
         ]),
-        h('div.bhero__side.bhero__side--us', {}, [
+        h('div.bhero__side.bhero__side--us.bhero__side--tap', {
+          role: 'button',
+          tabindex: '0',
+          onclick: () => this.openDetail('us', this.term),
+        }, [
           h('div.bhero__label', {}, [h('i.bdot.bdot--us'), this.usLabel]),
           this.heroUs,
           this.heroUsChg,
@@ -144,7 +161,14 @@ export class Bonds {
     for (const t of TENORS) {
       const valEl = h('span.brow__val', { text: '--' });
       const chgEl = h('span.brow__chg', { text: '' });
-      const row = h('div.brow', { dataset: { tenor: t.key } }, [
+      // 点击整行 → 该期限的收益率历史走势（收益率是日频单值，画的是收盘线不是真 K 线）
+      const row = h('div.brow.brow--tap', {
+        dataset: { tenor: t.key },
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `${isCn ? '中国' : '美国'} ${t.key} 年收益率走势`,
+        onclick: () => this.openDetail(isCn ? 'cn' : 'us', t.key),
+      }, [
         h('span.brow__term', {}, [
           h('b', { text: t.key }),
           h('em', { text: '年' }),
@@ -179,6 +203,174 @@ export class Bonds {
       ]),
       grid,
     ]);
+  }
+
+  /* ---------------- 收益率走势详情 ---------------- */
+
+  /**
+   * 全屏走势层（懒建，第一次点击才创建）
+   *
+   * 为什么不复用详情页那套：那边是行情（有价格/涨跌/五档/K线切换），
+   * 这里只有一条收益率曲线，硬套会把一堆用不上的控件也带出来。
+   */
+  ensureDetail() {
+    if (this.detailEl) return;
+
+    this.dtTitle = h('div.bd__title', { text: '' });
+    this.dtVal = h('span.bd__val', { text: '--' });
+    this.dtChg = h('span.bd__chg', { text: '' });
+    this.dtDate = h('span.bd__date', { text: '' });
+    this.dtCanvas = h('canvas');
+    this.dtStats = h('div.bd__stats');
+    this.dtNote = h('p.bd__note', { text: '' });
+    this.dtChart = h('div.bd__chart', {}, [this.dtCanvas]);
+
+    this.rangeBtns = new Map();
+    const rangeBar = h('div.bd__ranges', {}, RANGES.map(r => {
+      const btn = h('button.bd__range' + (r.key === this.rangeKey ? '.is-on' : ''), {
+        type: 'button',
+        text: r.label,
+        onclick: () => this.setRange(r.key),
+      });
+      this.rangeBtns.set(r.key, btn);
+      return btn;
+    }));
+
+    const back = h('button.bd__back', {
+      type: 'button',
+      'aria-label': '返回',
+      html: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">'
+        + '<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" '
+        + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      onclick: () => this.closeDetail(),
+    });
+
+    this.detailEl = h('div.bd', { hidden: true }, [
+      h('div.bd__bar', {}, [back, this.dtTitle]),
+      h('div.bd__hero', {}, [this.dtVal, this.dtChg, this.dtDate]),
+      rangeBar,
+      this.dtChart,
+      this.dtStats,
+      this.dtNote,
+    ]);
+    document.body.appendChild(this.detailEl);
+
+    this.onResize = () => { if (!this.detailEl.hidden) this.paintDetail(); };
+    window.addEventListener('resize', this.onResize);
+  }
+
+  openDetail(country, term) {
+    if (!this.data) return;
+    this.ensureDetail();
+    this.dtCtx = { country, term };
+    this.dtHover = null;
+    this.dtEnd = null;
+    this.detailEl.hidden = false;
+    // 先等一帧让 flex 布局生效，canvas 拿到真实尺寸才画得准
+    requestAnimationFrame(() => this.paintDetail());
+  }
+
+  closeDetail() {
+    if (!this.detailEl) return;
+    this.detailEl.hidden = true;
+  }
+
+  setRange(key) {
+    this.rangeKey = key;
+    this.dtHover = null;      // 换窗口后旧索引已经指向另一天
+    for (const [k, el] of this.rangeBtns) el.classList.toggle('is-on', k === key);
+    this.paintDetail();
+  }
+
+  paintDetail() {
+    const ctx = this.dtCtx;
+    const d = this.data;
+    if (!ctx || !d || !this.detailEl || this.detailEl.hidden) return;
+
+    const label = ctx.country === 'cn' ? '中国' : '美国';
+    this.dtTitle.textContent = `${label} ${ctx.term} 年国债`;
+
+    const key = ctx.country + ctx.term;
+    const all = (d.history || [])
+      .filter(r => Number.isFinite(r[key]) && r[key] > 0)
+      .map(r => ({ date: r.date, v: r[key] }));
+
+    const n = (RANGES.find(r => r.key === this.rangeKey) || RANGES[1]).n;
+    const points = all.slice(-n);
+
+    if (points.length < 2) {
+      this.dtVal.textContent = '--';
+      this.dtChg.textContent = '';
+      this.dtDate.textContent = '';
+      clear(this.dtStats);
+      this.dtStats.appendChild(h('span', { text: '该期限历史数据不足，暂时画不出走势' }));
+      this.dtNote.textContent = '';
+      return;
+    }
+
+    const last = points[points.length - 1];
+
+    // 光标状态跨重绘保留，但窗口滑到新的一天后旧索引指向的是另一天，清掉重来
+    this.dtPoints = points;
+    if (last.date !== this.dtEnd) { this.dtHover = null; this.dtEnd = last.date; }
+    if (Number.isInteger(this.dtHover) && this.dtHover >= points.length) this.dtHover = null;
+
+    // 没开光标就显示末值（与改动前完全一致），开着就显示光标那天
+    this.setHero(this.dtHover == null ? points.length - 1 : this.dtHover);
+
+    const vs = points.map(p => p.v);
+    const hi = Math.max(...vs);
+    const lo = Math.min(...vs);
+    const avg = vs.reduce((a, b) => a + b, 0) / vs.length;
+    const spanBp = bp(last.v, points[0].v);
+
+    clear(this.dtStats);
+    const cell = (k, v, cls) => h('div.bd__stat', {}, [
+      h('span.bd__stat-k', { text: k }),
+      h('span.bd__stat-v' + (cls ? '.' + cls : ''), { text: v }),
+    ]);
+    this.dtStats.appendChild(cell('最高', `${fmtYield(hi)}%`));
+    this.dtStats.appendChild(cell('最低', `${fmtYield(lo)}%`));
+    this.dtStats.appendChild(cell('均值', `${fmtYield(avg)}%`));
+    this.dtStats.appendChild(cell('区间变化', fmtBp(spanBp), dirText(spanBp)));
+
+    this.dtNote.textContent = `区间 ${shortDate(points[0].date)} ~ ${shortDate(last.date)}，`
+      + `共 ${points.length} 个交易日。曲线是到期收益率的每日收盘值，`
+      + '收益率上行对应债券价格下跌（红色即收益率走高）。'
+      + '副图柱体为每日基点变化。数据来自东方财富公开接口，仅供参考。';
+
+    // 尺寸在隐藏状态下量不到，rAF 里已经布局完成
+    drawYieldLine(this.dtCanvas, points, {
+      digits: 3,
+      hover: this.dtHover,
+      // 光标移动只回写上方数字，画面由 yieldline 自己重绘：
+      // 这里若再调 paintDetail 会整块重建，拖动时手感会顿
+      onHover: i => {
+        this.dtHover = i;
+        this.setHero(i == null ? points.length - 1 : i);
+      },
+    });
+  }
+
+  /**
+   * 上方大数字：收益率 + 当日 bp + 日期
+   * @param {number} idx dtPoints 的下标
+   */
+  setHero(idx) {
+    const pts = this.dtPoints;
+    if (!pts || !pts.length) return;
+
+    const i = Math.max(0, Math.min(pts.length - 1, idx));
+    const cur = pts[i];
+    const prev = pts[i - 1];
+    const dayBp = prev ? bp(cur.v, prev.v) : NaN;
+    const cls = Number.isFinite(dayBp) ? dirText(dayBp) : '';
+
+    this.dtVal.textContent = `${fmtYield(cur.v)}%`;
+    this.dtVal.className = 'bd__val ' + cls;
+    this.dtChg.textContent = Number.isFinite(dayBp) ? fmtBp(dayBp) : '';
+    this.dtChg.className = 'bd__chg ' + cls;
+    this.dtDate.textContent = shortDate(cur.date);
   }
 
   /* ---------------- 生命周期 ---------------- */
@@ -239,6 +431,8 @@ export class Bonds {
     if (!data) return;
     this.data = data;
     this.paint();
+    // 详情开着时跟着刷新（10 分钟一轮，日频数据本就很少变）
+    if (this.detailEl && !this.detailEl.hidden) this.paintDetail();
 
     // 两国发布节奏不同（美国 T+1），日期不一样时分别写出来，
     // 免得看到两个不同日期的人以为是数据错乱
@@ -367,9 +561,18 @@ export class Bonds {
   /** 主题切换后重绘（颜色取自 CSS 变量的元素只需重新 paint，没有 canvas 了） */
   repaint() {
     this.paint();
+    // 主题切换时如果走势页正开着，画布也要跟着换色：
+    // 调色板是在绘制那一刻读的，不重绘就会一直停在旧主题的底色上
+    if (this.detailEl && !this.detailEl.hidden) this.paintDetail();
   }
 
   destroy() {
     this.stop();
+    if (this.onResize) {
+      window.removeEventListener('resize', this.onResize);
+      this.onResize = null;
+    }
+    this.detailEl?.remove();
+    this.detailEl = null;
   }
 }

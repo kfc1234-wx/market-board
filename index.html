@@ -117,10 +117,28 @@
     <div class="pull" id="nteam-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
     <div class="board" id="nteam-list"></div>
     <div class="nte-sum" id="nteam-sum" hidden>
-      <div class="nte-sum__cell"><strong class="nte-sum__val" id="nteam-vol">--</strong><span class="nte-sum__note" id="nteam-volnote">今日合计成交量</span></div>
+      <div class="nte-sum__cell nte-sum__cell--tap" data-sum="vol" role="button" tabindex="0" aria-label="查看成交量汇总比照">
+        <strong class="nte-sum__val" id="nteam-vol">--</strong>
+        <span class="nte-sum__note" id="nteam-volnote">今日合计成交量</span>
+      </div>
       <div class="nte-sum__sep"></div>
-      <div class="nte-sum__cell"><strong class="nte-sum__val" id="nteam-flow">--</strong><span class="nte-sum__note" id="nteam-flownote">资金量汇总</span></div>
+      <div class="nte-sum__cell nte-sum__cell--tap" data-sum="flow" role="button" tabindex="0" aria-label="查看资金量汇总比照">
+        <strong class="nte-sum__val" id="nteam-flow">--</strong>
+        <span class="nte-sum__note" id="nteam-flownote">资金量汇总</span>
+      </div>
     </div>
+  </section>
+
+  <!-- ======== 好人好股 ======== -->
+  <section class="page" id="page-hao" data-page="hao" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>好人好股</h1>
+        <span class="topbar__status" id="hao-status">连接中</span>
+      </div>
+    </header>
+    <div class="pull" id="hao-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="board" id="hao-list"></div>
   </section>
 
   <!-- ======== 搜索 ======== -->
@@ -171,6 +189,10 @@
     <button class="tabbar__item" data-tab="nteam" type="button">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.8l7.4 3v5.4c0 4.6-3.1 8.3-7.4 10-4.3-1.7-7.4-5.4-7.4-10V5.8l7.4-3z" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linejoin="round"/><path d="M8.9 12l2.2 2.2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>国家队</span>
+    </button>
+    <button class="tabbar__item" data-tab="hao" type="button">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M12 3.2l2.62 5.46 5.98.83-4.36 4.2 1.05 5.98L12 16.85l-5.29 2.82 1.05-5.98-4.36-4.2 5.98-.83L12 3.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <span>好人好股</span>
     </button>
     <button class="tabbar__item" data-tab="search" type="button">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" fill="none" stroke="currentColor" stroke-width="2.05"/><path d="M15.8 15.8l4.9 4.9" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round"/></svg>
