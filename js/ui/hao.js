@@ -172,7 +172,7 @@ export class Hao {
     ]));
 
     this.noteEl = h('p.hs__note', {
-      text: '名单来自本地表格（A股主板国资科技成长，2026Q3），去重后 '
+      text: '名单来自本地表格（A股主板高股息蓝筹100只，核心收息 77 + 成长龙头 23），共 '
         + `${HAO_LIST.length} 只。涨跌停按主板 ±10% 口径，|涨跌幅| ≥ 9.8% 计入。`,
     });
     this.listEl.appendChild(this.noteEl);
@@ -241,6 +241,8 @@ export class Hao {
           id: item.id,
           code: item.code,
           name: (q && q.name) || item.name,
+          type: item.type,
+          group: item.group,
           price: ok ? q.price : NaN,
           pct: ok ? q.pct : NaN,
           chg: ok ? q.change : NaN,
@@ -499,6 +501,11 @@ class BucketPanel {
       const row = h('button.hb__row', { type: 'button', dataset: { id: r.id } }, [
         h('span.hb__main', {}, [
           h('span.hb__name', { text: r.name }),
+          // 类型标签：分组（核心收息/成长龙头）加重 + 行业-赛道；来自名单表
+          h('span.hb__type', {}, [
+            h('span.hb__type-g', { text: r.group || '' }),
+            h('span.hb__type-rest', { text: (r.type || '').slice((r.group || '').length) }),
+          ]),
           h('span.hb__meta', {}, [
             h('span.hb__code', { text: r.code }),
             divEl,

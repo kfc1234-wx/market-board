@@ -10,7 +10,7 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.27.0';
+const VERSION = 'v1.28.0';
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [

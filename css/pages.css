@@ -2709,6 +2709,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 类型标签：分组（加重）+ 行业-赛道（灰） */
+.hb__type {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 9.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: .01em;
+}
+.hb__type-g {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.hb__type-rest { color: var(--text-3); }
 .hb__meta {
   display: flex;
   align-items: baseline;
