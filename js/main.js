@@ -5,6 +5,7 @@ import { initStore, applyTheme, getPrefs, setPref, subscribe, restoreDefaultItem
 import { createRouter } from './core/router.js';
 import { Board } from './ui/board.js';
 import { Indices } from './ui/indices.js';
+import { Analysis } from './ui/analysis.js';
 import { Bonds } from './ui/bonds.js';
 import { NTeam } from './ui/nteam.js';
 import { Hao } from './ui/hao.js';
@@ -19,6 +20,7 @@ import { GBK_SUPPORTED } from './data/http.js';
 const pages = {
   board: qs('#page-board'),
   indices: qs('#page-indices'),
+  analysis: qs('#page-analysis'),
   bonds: qs('#page-bonds'),
   nteam: qs('#page-nteam'),
   hao: qs('#page-hao'),
@@ -26,7 +28,7 @@ const pages = {
   settings: qs('#page-settings'),
 };
 
-const TAB_NAMES = ['board', 'indices', 'bonds', 'nteam', 'hao', 'search', 'settings'];
+const TAB_NAMES = ['board', 'indices', 'analysis', 'bonds', 'nteam', 'hao', 'search', 'settings'];
 
 let currentTab = 'board';
 
@@ -54,6 +56,12 @@ const boot = () => {
     listEl: qs('#indices-list'),
     statusEl: qs('#indices-status'),
     onOpen: id => router.go('/s/' + id),
+  });
+
+  // ---------- 行情分析 ----------
+  const analysis = new Analysis({
+    bodyEl: qs('#analysis-body'),
+    statusEl: qs('#analysis-status'),
   });
 
   // ---------- 国债 ----------
@@ -107,6 +115,7 @@ const boot = () => {
     onThemeChange: () => {
       board.paint();
       indices.repaint();
+      analysis.repaintTheme();
       bonds.repaint();
       detail.repaintTheme();
     },
@@ -120,7 +129,7 @@ const boot = () => {
     }
     if (detail.active) detail.hide();
     switchTab(route.name);
-  });
+  }, TAB_NAMES);
 
   const switchTab = name => {
     currentTab = name;
@@ -138,6 +147,9 @@ const boot = () => {
 
     if (name === 'indices') indices.start();
     else indices.stop();
+
+    if (name === 'analysis') analysis.start();
+    else analysis.stop();
 
     if (name === 'bonds') bonds.start();
     else bonds.stop();
@@ -174,6 +186,11 @@ const boot = () => {
     scroller: qs('#indices-list'),
     indicator: qs('#indices-pull'),
     onRefresh: () => indices.refreshNow(),
+  });
+  createPullRefresh({
+    scroller: qs('#analysis-body'),
+    indicator: qs('#analysis-pull'),
+    onRefresh: () => analysis.refreshNow(),
   });
   createPullRefresh({
     scroller: qs('#bonds-body'),
@@ -225,7 +242,7 @@ const boot = () => {
   registerSW();
 
   // 调试用
-  window.__app = { board, indices, bonds, nteam, hao, detail, router };
+  window.__app = { board, indices, analysis, bonds, nteam, hao, detail, router };
 };
 
 function registerSW() {

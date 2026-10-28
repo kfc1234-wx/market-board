@@ -441,6 +441,13 @@ class BucketPanel {
       this.bodyEl,
     ]);
     document.body.appendChild(this.el);
+
+    // 这层是直接挂在 body 上的全屏覆盖层，不归路由管。
+    // 用户按系统返回键、或从地址栏跳到别的 tab 时 hash 变了但层还在，
+    // 会盖住目标页面让人以为卡死。跟着 hash 一起收。
+    window.addEventListener('hashchange', () => {
+      if (!this.el.hidden) this.hide();
+    });
   }
 
   show(key, list, all) {

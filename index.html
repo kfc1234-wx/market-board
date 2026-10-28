@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/pages.css">
+<script src="version.js"></script>
 <script>
   // 首屏前确定主题，避免白闪。默认深色；仅当用户显式选「浅色」或「跟随系统且系统为浅色」时才用浅色
   (function () {
@@ -91,6 +92,18 @@
     <div class="scroll idxscroll" id="indices-list"></div>
   </section>
 
+  <!-- ======== 行情分析（三因子状态分型） ======== -->
+  <section class="page" id="page-analysis" data-page="analysis" hidden>
+    <header class="topbar">
+      <div class="topbar__title">
+        <h1>行情分析</h1>
+        <span class="topbar__status" id="analysis-status">连接中</span>
+      </div>
+    </header>
+    <div class="pull" id="analysis-pull"><span class="pull__spinner"></span><span class="pull__text">下拉刷新</span></div>
+    <div class="scroll anscroll" id="analysis-body"></div>
+  </section>
+
   <!-- ======== 国债收益率（中美） ======== -->
   <section class="page" id="page-bonds" data-page="bonds" hidden>
     <header class="topbar">
@@ -162,7 +175,7 @@
         <h1>设置</h1>
         <span class="topbar__status" data-live="0">偏好只存在这台手机</span>
       </div>
-      <div class="topbar__acts"><span class="verpill">v1.21</span></div>
+      <div class="topbar__acts"><span class="verpill" data-ver></span></div>
     </header>
     <div class="settings" id="settings-body"></div>
   </section>
@@ -181,6 +194,10 @@
     <button class="tabbar__item" data-tab="indices" type="button">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.4 17.4l4.85-5.75a1 1 0 0 1 1.53-.04l2.83 2.9a1 1 0 0 0 1.47-.06L19.4 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19.7" cy="8.1" r="2" fill="currentColor"/></svg>
       <span>指数</span>
+    </button>
+    <button class="tabbar__item" data-tab="analysis" type="button">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M12 3.4l7.6 13.2H4.4L12 3.4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12.1" r="3.3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>行情分析</span>
     </button>
     <button class="tabbar__item" data-tab="bonds" type="button">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4.2 19.2v-4.6M9.4 19.2v-7.6M14.6 19.2v-5.4M19.8 19.2V6.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>

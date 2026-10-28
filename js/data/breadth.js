@@ -34,6 +34,12 @@ const TTL_IDLE = 30 * 60 * 1000;
 
 const cache = { at: 0, data: null };
 let inflight = null;
+/**
+ * 最近一次全量快照的逐只明细（已带 bucket 标签）
+ * 只给「点档位看名单」用，不放进 getBreadth 的返回值里——
+ * 五千多个对象跟着分布数据到处传，谁存一份快照就是一份内存。
+ */
+let lastRows = null;
 
 const num = v => {
   const x = Number(v);
@@ -87,7 +93,11 @@ function parseLine(line) {
   const code = m[1].slice(2);
   const name = f[1] || '';
   const prevClose = Number.isFinite(change) ? price - change : NaN;
-  return { code, name, price, pct, prevClose, limit: limitOf(code, name) };
+  // f[7] 是成交额（万元）。明细页要按「这一档一共成交了多少钱」给个量级感，
+  // 所以顺手解析，统一折算成元（与自选看板的 amount 同单位，fmtBig 直接吃）
+  const amtWan = num(f[7]);
+  const amount = Number.isFinite(amtWan) ? Math.round(amtWan * 1e4) : 0;
+  return { code, name, price, pct, prevClose, amount, limit: limitOf(code, name) };
 }
 
 /** 交易所涨停/跌停价：昨收 ×(1±限幅) 四舍五入到分 */
@@ -100,6 +110,14 @@ function emptyBuckets() {
   return { zt: 0, up7: 0, up57: 0, up35: 0, up03: 0, dn03: 0, dn35: 0, dn57: 0, dn7: 0, dt: 0 };
 }
 
+/**
+ * 分档统计，顺手把每只归属的档位写回行上（r.bucket）
+ *
+ * 为什么不留给明细页自己按涨跌幅再算一遍：涨跌停是**按昨收价反推的封板价**
+ * 判定的，不是按「≥9.98%」这种幅度阈值。明细页拿不到 prevClose 就重算，
+ * 会出现「卡片写着 42 家涨停、点进去只有 39 只」这种对不上的情况。
+ * 统计和明细用同一次判定，是唯一能保证两边数字一致的做法。
+ */
 function tally(rows) {
   const b = emptyBuckets();
   let up = 0, down = 0, flat = 0;
@@ -123,18 +141,18 @@ function tally(rows) {
       ? Math.abs(r.price - boardPrice(r.prevClose, L, -1)) <= 0.005
       : (p <= -(L - 0.02) && p >= -(L + 1));
 
-    if (ztHit) { b.zt++; continue; }
-    if (dtHit) { b.dt++; continue; }
+    if (ztHit) { r.bucket = 'zt'; b.zt++; continue; }
+    if (dtHit) { r.bucket = 'dt'; b.dt++; continue; }
 
-    if (p >= 7) b.up7++;
-    else if (p >= 5) b.up57++;
-    else if (p >= 3) b.up35++;
-    else if (p > 0) b.up03++;
-    else if (p === 0) { /* 平盘单列，不进任何档 */ }
-    else if (p > -3) b.dn03++;
-    else if (p > -5) b.dn35++;
-    else if (p > -7) b.dn57++;
-    else b.dn7++;
+    if (p >= 7) { r.bucket = 'up7'; b.up7++; }
+    else if (p >= 5) { r.bucket = 'up57'; b.up57++; }
+    else if (p >= 3) { r.bucket = 'up35'; b.up35++; }
+    else if (p > 0) { r.bucket = 'up03'; b.up03++; }
+    else if (p === 0) { r.bucket = 'flat'; /* 平盘单列，不进任何档 */ }
+    else if (p > -3) { r.bucket = 'dn03'; b.dn03++; }
+    else if (p > -5) { r.bucket = 'dn35'; b.dn35++; }
+    else if (p > -7) { r.bucket = 'dn57'; b.dn57++; }
+    else { r.bucket = 'dn7'; b.dn7++; }
   }
 
   // 中位涨跌幅 = 通达信 880009 的单日口径
@@ -187,6 +205,7 @@ async function fetchAll() {
   if (failed) console.warn(`[breadth] ${failed}/${chunks.length} 批失败，分布略有缺失`);
 
   const res = tally(rows);
+  lastRows = rows;
   return { ...res, at: Date.now(), partial: failed > 0 };
 }
 
@@ -220,4 +239,25 @@ export async function getBreadth(opt = {}) {
 /** 同步读上次快照（首屏先用它占位，避免白块） */
 export function peekBreadth() {
   return cache.data;
+}
+
+const BUCKETS = new Set(['zt', 'up7', 'up57', 'up35', 'up03', 'dn03', 'dn35', 'dn57', 'dn7', 'dt']);
+
+/**
+ * 取某一档的个股明细（点分布条进去看名单用）
+ *
+ * 档位归属直接用统计阶段打在行上的 bucket，所以家数必然与卡片一致。
+ * 返回的是新数组、但里面是行对象的引用——调用方只读，别就地排序，
+ * 否则会把同一次快照的下游使用方（下次点别的档）也带乱。
+ *
+ * @param {string} key zt|up7|up57|up35|up03|dn03|dn35|dn57|dn7|dt，另支持 up/down/flat
+ * @returns {Array<object>|null} null = 还没有任何快照（分布卡都没取到数）
+ */
+export function getBucketRows(key) {
+  if (!lastRows) return null;
+  if (key === 'up') return lastRows.filter(r => r.pct > 0);
+  if (key === 'down') return lastRows.filter(r => r.pct < 0);
+  if (key === 'flat') return lastRows.filter(r => r.pct === 0);
+  if (!BUCKETS.has(key)) return null;
+  return lastRows.filter(r => r.bucket === key);
 }

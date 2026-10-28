@@ -7,9 +7,14 @@
  *
  * 头部单独给「中位涨跌幅」——这正是通达信 880009（全 A 中位指数）的单日口径，
  * 看它比看上证更能反映手里股票的真实冷暖。
+ *
+ * 每一档都能点：点左半进跌的那档、点右半进涨的那档，看这一档里到底是哪些股票。
+ * 摊开两千多只个股的列表明细，是这张「只给数字」的卡片原本回答不了的问题。
  */
 
 import { h, clear } from '../util/dom.js';
+import { fmtPct, dirClass } from '../util/format.js';
+import { AllPanel } from './allpanel.js';
 
 /** 快照时间，精确到秒——30 秒一轮，只到分钟看不出在动 */
 const clock = ts => {
@@ -17,7 +22,13 @@ const clock = ts => {
   return [d.getHours(), d.getMinutes(), d.getSeconds()]
     .map(n => String(n).padStart(2, '0')).join(':');
 };
-import { fmtPct, dirClass } from '../util/format.js';
+
+/**
+ * 档位名：卡片里为了省地方只写「5~7%」，左右靠颜色分边；
+ * 但明细页标题必须自带涨跌方向，否则「5~7%」不知道是涨还是跌。
+ */
+const dnLabel = t => (t.startsWith('跌') ? t : `跌 ${t}`);
+const upLabel = t => (t.startsWith('涨') ? t : `涨 ${t}`);
 
 /**
  * 按需加载：breadth.js 会连带拉进 40KB 的静态代码表（pool-a.js），
@@ -42,13 +53,19 @@ const PAIRS = [
 const REFRESH_MS = 30 * 1000;
 
 export class Distribution {
-  /** @param {HTMLElement} el 挂载点 */
-  constructor(el) {
+  /**
+   * @param {HTMLElement} el 挂载点
+   * @param {{onOpen?: (id: string) => void}} [opt] onOpen 点明细行 → 进个股详情
+   */
+  constructor(el, opt = {}) {
     this.el = el;
+    this.onOpen = opt.onOpen || (() => {});
     this.data = null;
     this.timer = 0;
     this.active = false;
     this.building = false;
+    /** 档位明细页（懒建：绝大多数人只是看一眼分布就走） */
+    this.panel = null;
 
     this.build();
   }
@@ -94,12 +111,30 @@ export class Distribution {
       const dnNum = h('span.dist__num.dist__num--dn', { text: '–' });
       const upNum = h('span.dist__num.dist__num--up', { text: '–' });
 
-      this.rowsEl.appendChild(h('div.dist__row', {}, [
-        dnNum, h('span.dist__track.dist__track--l', {}, [dnBar]), h('span.dist__label', { text: pair.dn[1] }),
-        h('span.dist__label.dist__label--r', { text: pair.up[1] }), h('span.dist__track.dist__track--r', {}, [upBar]), upNum,
-      ]));
+      // 左右两半各自是按钮：点哪半就进哪一档的名单。
+      // 不整行一个按钮，因为同一行的左右是完全不同的两档（5~7% 跌 / 5~7% 涨）
+      const dnHalf = h('button.dist__half.dist__half--dn', {
+        type: 'button',
+        'aria-label': dnLabel(pair.dn[1]) + ' 档位名单',
+      }, [
+        dnNum,
+        h('span.dist__track.dist__track--l', {}, [dnBar]),
+        h('span.dist__label', { text: pair.dn[1] }),
+      ]);
+      const upHalf = h('button.dist__half.dist__half--up', {
+        type: 'button',
+        'aria-label': upLabel(pair.up[1]) + ' 档位名单',
+      }, [
+        h('span.dist__label.dist__label--r', { text: pair.up[1] }),
+        h('span.dist__track.dist__track--r', {}, [upBar]),
+        upNum,
+      ]);
 
-      this.cells.push({ pair, dnBar, upBar, dnNum, upNum });
+      dnHalf.onclick = () => this.openBucket(pair.dn[0], dnLabel(pair.dn[1]));
+      upHalf.onclick = () => this.openBucket(pair.up[0], upLabel(pair.up[1]));
+
+      this.rowsEl.appendChild(h('div.dist__row', {}, [dnHalf, upHalf]));
+      this.cells.push({ pair, dnBar, upBar, dnNum, upNum, dnHalf, upHalf });
     }
   }
 
@@ -140,7 +175,31 @@ export class Distribution {
       c.upBar.style.width = width(up);
       c.dnBar.hidden = dn <= 0;
       c.upBar.hidden = up <= 0;
+      // 空档位压暗：点进去只有空列表，先给个视觉提示（仍可点，能确认「确实没人」）
+      c.dnHalf.classList.toggle('is-empty', dn <= 0);
+      c.upHalf.classList.toggle('is-empty', up <= 0);
     }
+  }
+
+  /**
+   * 打开某一档的个股名单
+   *
+   * 明细直接用统计阶段留在行上的 bucket 归属，不再按涨跌幅重算一遍：
+   * 涨跌停是按昨收反推的封板价判定的，重算必然出现「卡片 42 家、名单 39 只」。
+   */
+  openBucket(key, label) {
+    const rows = breadthMod && breadthMod.getBucketRows(key);
+    if (!rows) return;   // 分布还没取到数，档位上也只有「–」
+    if (!this.panel) this.panel = new AllPanel({ onOpen: id => this.onOpen(id) });
+    const d = this.data || {};
+    this.panel.show({
+      bucket: key,
+      label,
+      rows,
+      at: d.at,
+      partial: d.partial,
+      stale: d.stale,
+    });
   }
 
   async load(force = false) {

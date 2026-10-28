@@ -12,6 +12,24 @@ const THEMES = [
   { value: 'light', label: '浅色' },
 ];
 
+/** 版本号来自 version.js（classic script，挂在 self 上）；读不到时显示 -- 而不是假的旧号 */
+const APP_VER = self.__APP_VERSION__ || '--';
+const APP_CACHE = self.__APP_CACHE__ || '';
+
+/** 读出手机当前实际激活的 SW 缓存名，用来和应用版本对照 */
+async function readShellVersion() {
+  if (!('caches' in window)) return { text: '不支持', stale: false };
+  try {
+    const keys = await caches.keys();
+    const shells = keys.filter(k => k.startsWith('shell-')).sort();
+    if (!shells.length) return { text: '未启用', stale: false };
+    const cur = shells[shells.length - 1].replace('shell-', '');
+    return { text: cur, stale: !!APP_CACHE && cur !== APP_CACHE };
+  } catch {
+    return { text: '读取失败', stale: false };
+  }
+}
+
 export function initSettings({ body, onThemeChange }) {
   const render = () => {
     clear(body);
@@ -45,6 +63,57 @@ export function initSettings({ body, onThemeChange }) {
     // ---- 数据 ----
     body.appendChild(h('div.sec-title', { text: '数据' }));
 
+    // 离线缓存行：异步读 caches，读到旧版本就标黄提示
+    const cacheVal = h('span.setrow__value', { text: '…' });
+    const cacheRow = h('div.setrow', {}, [
+      h('span.setrow__label', { text: '离线缓存' }),
+      cacheVal,
+    ]);
+    readShellVersion().then(r => {
+      cacheVal.textContent = r.text;
+      if (r.stale) cacheVal.classList.add('is-stale');
+    });
+
+    // 手动检查更新：装到桌面的 PWA 不关也不重开，浏览器可能几十天不查一次新版；
+    // 「回到前台查一次」那个时机也不一定等得到。给用户一个能自己催的地方。
+    const updateVal = h('span.setrow__value.is-link', { text: '检查' });
+    const updateRow = h('div.setrow', {
+      onclick: async () => {
+        if (updateVal.dataset.busy === '1') return;
+        if (!('serviceWorker' in navigator)) {
+          toast('当前浏览器不支持离线缓存，刷新页面就是最新版');
+          return;
+        }
+        let reg = null;
+        try { reg = await navigator.serviceWorker.getRegistration(); } catch { /* ignore */ }
+        if (!reg) {
+          toast('离线缓存未启用，刷新页面就是最新版');
+          return;
+        }
+        updateVal.dataset.busy = '1';
+        updateVal.textContent = '检查中…';
+        try { await reg.update(); } catch { /* 离线时 update 会抛，下面统一给结果 */ }
+        // update() 只是去服务器比对；真有新版它会在后台开始装，
+        // 装好之后 main.js 那边收到 controllerchange 会自动 reload，这里不用插手。
+        setTimeout(async () => {
+          delete updateVal.dataset.busy;
+          updateVal.textContent = '检查';
+          const now = await navigator.serviceWorker.getRegistration().catch(() => null);
+          if (now?.waiting) {
+            toast('发现新版本，正在切换…');
+            now.waiting.postMessage('SKIP_WAITING');
+          } else if (now?.installing) {
+            toast('正在下载新版本…');
+          } else {
+            toast(`已是最新版本 ${APP_VER}`);
+          }
+        }, 1600);
+      },
+    }, [
+      h('span.setrow__label', { text: '检查更新' }),
+      updateVal,
+    ]);
+
     body.appendChild(h('div.setgroup', {}, [
       h('div.setrow', {
         onclick: () => {
@@ -76,6 +145,13 @@ export function initSettings({ body, onThemeChange }) {
         h('span.setrow__label', { text: '本地存储' }),
         h('span.setrow__value', { text: canPersist() ? '正常' : '不可用（隐私模式）' }),
       ]),
+
+      // 「离线缓存」显示的是手机上**当前激活**的 SW 缓存名，不是代码里的版本号。
+      // 两者对不上，就说明新版本还没装到这台手机上 —— 上面那个应用版本号是死的，
+      // 这个才是活的。所以它比版本号更能说明问题。
+      cacheRow,
+
+      updateRow,
     ]));
 
     // ---- 关于 ----
@@ -83,7 +159,7 @@ export function initSettings({ body, onThemeChange }) {
 
     body.appendChild(h('div.about', {
       html: `
-        <p><strong>行情速览</strong> v1.21 · 一个纯前端的行情看板，无账号、无后台，自选与偏好只存在本机。</p>
+        <p><strong>行情速览</strong> ${APP_VER} · 一个纯前端的行情看板，无账号、无后台，自选与偏好只存在本机。</p>
         <p><strong>数据来源：</strong>腾讯行情（A股/港股/美股报价与分时、现货黄金 / 布伦特原油 / 标普500期货）、新浪财经（外盘期货分时与日K、ETF 资金流、离岸人民币、人民币账户黄金）、CNBC（日经225 / 韩国KOSPI / 美元指数，feargreedchart 与东方财富为备源）、东方财富（中美国债收益率，美国为 T+1 发布）、腾讯 smartbox / 新浪 suggest（搜索）。均为公开接口。</p>
         <p><strong>现货与期货：</strong>纳斯达克100 / 标普500 是<strong>现货指数</strong>，只在美股常规时段（美东 09:30–16:00）计算，收盘后不再产生新点位；「纳指100期货 / 标普500期货」是 CME 连续合约，几乎 24 小时交易，点位含升贴水，通常比现货高或低几十到几百点，两者不能混为一谈。布伦特原油为 ICE 连续合约报价。</p>
         <p><strong>黄金口径：</strong>「现货黄金」为伦敦金 XAU/USD（美元/盎司）；「人民币账户黄金」为银行账户金口径（元/克），由新浪的黄金盎司兑人民币报价按 1 金衡盎司 = 31.1034768 克折算，<strong>不含银行买卖点差</strong>，与手机银行报价通常相差 0.5~1 元/克。</p>

@@ -10,12 +10,23 @@
  * 否则 CDN 长缓存会导致用户永远拿不到新版本。
  */
 
-const VERSION = 'v1.28.0';
+// 版本号来自 ./version.js —— 顶栏胶囊、设置页、缓存名共用一个来源，
+// 免得又出现「界面上写着 v1.21、实际跑着 v1.28」这种对不上的情况。
+// importScripts 是同步的，必须在顶层直接调用；它拿不到时退回内置值，
+// 宁可版本号旧一点，也不能让 SW 因为一个 404 装不上。
+let VERSION = 'v1.31.0';
+try {
+  importScripts('./version.js');
+  if (self.__APP_CACHE__) VERSION = self.__APP_CACHE__;
+} catch (e) {
+  // version.js 缺失 / 离线首次安装：用上面的兜底值
+}
 const SHELL = 'shell-' + VERSION;
 
 const ASSETS = [
   './',
   './index.html',
+  './version.js',
   './manifest.webmanifest',
   './css/tokens.css',
   './css/base.css',
@@ -33,6 +44,8 @@ const ASSETS = [
   './js/data/bonds.js',
   './js/data/indicators.js',
   './js/data/breadth.js',
+  './js/data/analysis.js',
+  './js/data/analysis-data.js',
   './js/data/pool-a.js',
   './js/data/dividend.js',
   './js/data/sources/tencent.js',
@@ -52,12 +65,14 @@ const ASSETS = [
   './js/chart/spark.js',
   './js/ui/board.js',
   './js/ui/indices.js',
+  './js/ui/analysis.js',
   './js/ui/bonds.js',
   './js/ui/nteam.js',
   './js/ui/ntsum.js',
   './js/ui/hao.js',
   './js/data/hao.js',
   './js/ui/distribution.js',
+  './js/ui/allpanel.js',
   './js/ui/detail.js',
   './js/ui/flow.js',
   './js/ui/search.js',
@@ -94,12 +109,23 @@ const API_HOSTS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(SHELL)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(() => self.skipWaiting()),
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(SHELL);
+
+    // cache.addAll(ASSETS) 有个隐蔽的坑：它内部用的就是默认 fetch，
+    // 会命中浏览器的 HTTP 缓存。服务器已经换成新包了，预缓存却把**旧的
+    // index.html** 装进新版本的缓存里 —— 结果是缓存名叫 shell-v1.29.0，
+    // 里面躺着 v1.28 的壳，断网打开看到的是旧界面（实测复现过）。
+    // cache:'reload' 强制跳过 HTTP 缓存直接取网络，这正是预缓存要的语义。
+    //
+    // 不用 addAll：它对任何一个 404 都会整批失败，一个文件挂掉就整份离线
+    // 缓存全空。改成逐个 add + allSettled，挂掉的那个不影响其他。
+    await Promise.allSettled(
+      ASSETS.map(url => cache.add(new Request(url, { cache: 'reload' }))),
+    );
+
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {

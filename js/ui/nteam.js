@@ -221,7 +221,9 @@ export class NTeam {
   mountDist() {
     if (!this.distSlot) {
       this.distSlot = h('div.dist-slot');
-      this.dist = new Distribution(this.distSlot);
+      // 分布卡里的档位可以点开看名单，名单里再点一只就进详情，
+      // 所以要把本页的「打开详情」传下去
+      this.dist = new Distribution(this.distSlot, { onOpen: id => this.onOpen(id) });
     }
     return this.distSlot;
   }
