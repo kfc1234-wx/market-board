@@ -1,0 +1,210 @@
+/* ============================================================
+   皮肤 A · 漫画分格 Manga
+   ------------------------------------------------------------
+   昼：纸白网点 + 黑描边 + 硬投影（漫画原稿）
+   夜：墨底反白 + 亮黄点睛（夜间印刷的网点稿）
+   两套共用 data-skin="manga"，靠 data-theme 切换。
+   预览：?skin=manga
+   ============================================================ */
+
+/* ============================================================
+   3. 漫画分格 Manga —— 纸白底 + 网点 + 2px 黑描边 + 硬投影
+   ============================================================ */
+:root[data-skin="manga"] {
+  --bg: #F6F2E8;
+  --bg-deep: #EDE7D9;
+  --bg-elev: #FFFFFF;
+  --bg-elev-2: #F1ECE0;
+  --bg-elev-3: #E5DECE;
+  --bg-veil: rgba(246, 242, 232, .92);
+  --bg-mask: rgba(30, 26, 20, .34);
+  --bg-skel: #EFEADD;
+
+  --text: #14121A;
+  --text-2: #4E4A52;
+  --text-3: #857F88;
+
+  --line: rgba(20, 18, 26, .85);
+  --line-strong: #14121A;
+
+  --up: #E01B33;
+  --down: #0A7F58;
+  --flat: #6E6A72;
+  --up-bg: rgba(224, 27, 51, .12);
+  --down-bg: rgba(10, 127, 88, .12);
+
+  --accent: #14121A;
+  --accent-2: #3A3540;
+  --accent-ink: #FFFFFF;
+  --accent-weak: rgba(20, 18, 26, .08);
+  --accent-3: #E01B33;
+  --accent-3-weak: rgba(224, 27, 51, .10);
+  --lit: #B8860B;
+  --warn: #B25E00;
+  --warn-bg: rgba(178, 94, 0, .12);
+
+  --chart-grid: rgba(20, 18, 26, .14);
+  --chart-axis: #857F88;
+  --chart-ma5: #B8860B;
+  --chart-ma10: #1F5FBF;
+  --chart-ma20: #7A2E8E;
+
+  --card-grad: #FFFFFF;
+  --card-grad-2: #FFFFFF;
+  --card-grad-3: linear-gradient(170deg, rgba(224, 27, 51, .05), rgba(20, 18, 26, .03));
+  --deco-1: rgba(20, 18, 26, .08);
+  --deco-2: rgba(224, 27, 51, .10);
+  --paw: #14121A;
+  --star: rgba(20, 18, 26, .05);
+  --petal: rgba(224, 27, 51, .35);
+
+  /* 硬投影：不做模糊，直接偏 3px 的实色影 */
+  --shadow-card: 3px 3px 0 rgba(20, 18, 26, .92);
+  --shadow-soft: 2px 2px 0 rgba(20, 18, 26, .80);
+  --shadow-pop: 4px 4px 0 rgba(20, 18, 26, .92);
+  --hl: none;
+
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-lg: 5px;
+  --radius-xl: 6px;
+  --radius-pill: 4px;
+
+  color-scheme: light;
+}
+
+/* 网点纸底纹 */
+:root[data-skin="manga"] body {
+  background-image: radial-gradient(circle, rgba(20, 18, 26, .16) 1px, transparent 1.1px);
+  background-size: 7px 7px;
+}
+
+/* 卡片：1.5px 黑边 + 2px 硬影。2px 描边+3px 影在一屏十几行时太吵，减一档 */
+:root[data-skin="manga"] .row,
+:root[data-skin="manga"] .icard,
+:root[data-skin="manga"] .an-card,
+:root[data-skin="manga"] .setgroup {
+  border: 1.5px solid #14121A;
+  box-shadow: 2px 2px 0 rgba(20, 18, 26, .88);
+}
+
+/* 标题走漫画描边感：加粗 + 微字距 */
+:root[data-skin="manga"] .an-card__title,
+:root[data-skin="manga"] .topbar__title,
+:root[data-skin="manga"] .setgroup__title {
+  font-weight: 800;
+  letter-spacing: -.2px;
+}
+
+/* 顶栏做成分格标题条 */
+:root[data-skin="manga"] .topbar {
+  background: #FFFFFF;
+  border-bottom: 3px solid #14121A;
+}
+:root[data-skin="manga"] .tabbar {
+  background: #FFFFFF;
+  border-top: 3px solid #14121A;
+}
+
+/* 选中 tab：黑药丸 + 白图标，像漫画对话框。
+   坑：base.css 有 `.tabbar__item.is-active svg { color: var(--accent) }`，
+   而漫画的 --accent 就是纯黑 —— 黑图标配黑药丸等于隐形。
+   所以这里必须把图标单独点成白色，不能只改按钮色。 */
+:root[data-skin="manga"] .tabbar__item.is-active::before {
+  background: #14121A;
+  border-radius: 4px;
+}
+:root[data-skin="manga"] .tabbar__item.is-active svg { color: #FFFFFF; }
+:root[data-skin="manga"] .tabbar__item.is-active { color: #14121A; }
+
+/* ============================================================
+   漫画分格 · 夜
+   ------------------------------------------------------------
+   不能只把底色涂黑：卡片若仍是白底黑边，一屏十几张会晃眼。
+   这里整体反相——墨底、浅灰卡、白描边，网点由黑点改白点，
+   硬投影保留但压暗，点睛色换成亮黄（昼版的纯黑 accent 在墨底会隐形）。
+   ============================================================ */
+:root[data-skin="manga"][data-theme="dark"] {
+  --bg: #17151F;
+  --bg-deep: #0E0D14;
+  --bg-elev: #302D40;
+  --bg-elev-2: #262334;
+  --bg-elev-3: #3A374C;
+  --bg-veil: rgba(23, 21, 31, .93);
+  --bg-mask: rgba(0, 0, 0, .62);
+  --bg-skel: #262434;
+
+  --text: #F5F2E9;
+  --text-2: #C6C1D0;
+  --text-3: #ADA6BF;
+
+  --line: rgba(245, 242, 233, .22);
+  --line-strong: rgba(245, 242, 233, .40);
+
+  --up: #FF5C72;
+  --down: #37C99A;
+  --flat: #9A94A8;
+  --up-bg: rgba(255, 92, 114, .14);
+  --down-bg: rgba(55, 201, 154, .14);
+
+  --accent: #FFD84D;
+  --accent-2: #FFE88C;
+  --accent-ink: #17151F;
+  --accent-weak: rgba(255, 216, 77, .14);
+  --accent-3: #FF5C72;
+  --accent-3-weak: rgba(255, 92, 114, .14);
+  --lit: #FFD84D;
+  --warn: #FFB15C;
+  --warn-bg: rgba(255, 177, 92, .14);
+
+  --chart-grid: rgba(245, 242, 233, .12);
+  --chart-axis: #ADA6BF;
+  --chart-ma5: #FFD84D;
+  --chart-ma10: #6FB2FF;
+  --chart-ma20: #D48CFF;
+
+  --card-grad: #302D40;
+  --card-grad-2: #302D40;
+  --card-grad-3: linear-gradient(170deg, rgba(255, 216, 77, .06), rgba(255, 92, 114, .04));
+  --deco-1: rgba(245, 242, 233, .08);
+  --deco-2: rgba(255, 216, 77, .10);
+  --paw: #FFD84D;
+  --star: rgba(245, 242, 233, .05);
+  --petal: rgba(255, 216, 77, .30);
+
+  --shadow-card: 2px 2px 0 rgba(0, 0, 0, .85);
+  --shadow-soft: 2px 2px 0 rgba(0, 0, 0, .70);
+  --shadow-pop: 4px 4px 0 rgba(0, 0, 0, .85);
+  --hl: none;
+
+  color-scheme: dark;
+}
+
+:root[data-skin="manga"][data-theme="dark"] body {
+  background-image: radial-gradient(circle, rgba(245, 242, 233, .13) 1px, transparent 1.1px);
+  background-size: 7px 7px;
+}
+
+:root[data-skin="manga"][data-theme="dark"] .row,
+:root[data-skin="manga"][data-theme="dark"] .icard,
+:root[data-skin="manga"][data-theme="dark"] .an-card,
+:root[data-skin="manga"][data-theme="dark"] .setgroup {
+  border-color: rgba(245, 242, 233, .38);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .85);
+}
+
+:root[data-skin="manga"][data-theme="dark"] .topbar {
+  background: #1E1C29;
+  border-bottom-color: #F5F2E9;
+}
+:root[data-skin="manga"][data-theme="dark"] .tabbar {
+  background: #1E1C29;
+  border-top-color: #F5F2E9;
+}
+
+/* 夜版选中态反过来：亮黄药丸 + 墨色图标 */
+:root[data-skin="manga"][data-theme="dark"] .tabbar__item.is-active::before {
+  background: #FFD84D;
+}
+:root[data-skin="manga"][data-theme="dark"] .tabbar__item.is-active svg { color: #17151F; }
+:root[data-skin="manga"][data-theme="dark"] .tabbar__item.is-active { color: #17151F; }

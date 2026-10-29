@@ -1,47 +1,67 @@
 /**
  * 「行情分析」页
  *
- * 版式对齐常见的「指数复盘 · 三因子模型」：指数卡 / 今日状态 / 研究基准 /
- * 四象限坐标 / 模型判读。数据分两路：
- *   静态  —— analysis-data.js 里 16 格的历史赔率（8 年日线分层统计）
- *   实时  —— 今天落进哪一格（报价 + 前 5 日均量 + 创业板对上证的溢价）
- * 两路都到位才可能显示赔率；实时没算出来就退化成「数据不足」，不猜。
+ * v1.34 版式重做：从「统计体检报告」改回看盘工具。
  *
- * 与截图的一处刻意不同：ARMS 只作展示，不参与状态判定。
- * 历史全 A 家数与成交额拿不到，硬塞进因子会让「历史样本」与「今日状态」
- * 不是同一套算法，那才是真正的错误。
+ * 一屏之内只回答三个问题
+ *   1 今天像历史上的哪几天（60 个最相似的交易日）
+ *   2 那些天之后 5 / 20 / 60 日怎么走的（分布 + 上涨概率）
+ *   3 具体是哪几天（可展开看明细）
+ *
+ * 统计口径、校准结果、参数怎么选的，全部收进底部可展开的「方法」里，
+ * 不再占正文版面 —— 该被验证的是结论，不是过程。
  */
+import { h } from '../util/dom.js';
+import { getArms, fetchBars, adjustVolumeRatio, QUAD } from '../data/analysis.js';
+import { getQuotes } from '../data/quotes.js';
+import { fmtPrice, fmtBig } from '../util/format.js';
 
-import { h, clear } from '../util/dom.js';
-import { fmtPct, fmtPrice, fmtBig, dirClass } from '../util/format.js';
-import {
-  getAnalysis, getArms, peekAnalysis, ANALYSIS_INDICES, sessionElapsed,
-} from '../data/analysis.js';
+/**
+ * 历史库（105KB）改成按需加载。
+ *
+ * 之前是静态 import，main.js 一 import Analysis 就把 analog.js →
+ * analysis-history.js 整条链拉进首屏：实测停在自选页、一次没进过分析页，
+ * 也会下载 105KB。改成进入本页 refresh 时才 import，首屏省掉这 14%。
+ *
+ * INDICES / HORIZONS 是纯常量，留在本地，不必等模块。
+ */
+const INDICES = [
+  { id: 'sh000001', name: '上证指数', short: '上证' },
+  { id: 'sz399001', name: '深证成指', short: '深证' },
+  { id: 'sz399006', name: '创业板指', short: '创业板' },
+];
+const HORIZONS = [5, 20, 60];
 
-/** 量比变化很慢，60 秒一轮足够；ARMS 走 breadth 的 25 秒缓存，这里不催 */
+let ANALOG = null;
+function analogMod() {
+  if (!ANALOG) ANALOG = import('../data/analog.js');
+  return ANALOG;
+}
+
+/** 与历史库同源；量比变化很慢，60 秒一轮足够 */
 const REFRESH_MS = 60 * 1000;
-
-const VOL = ['', '极缩量', '缩量', '放量', '巨量'];
-const QUAD_NAME = {
-  '1-1': '风险偏好上行',
-  '1-0': '权重护盘',
-  '0-1': '结构分化',
-  '0-0': '系统性走弱',
-};
+const SHOW_ROWS = 8;
 
 const signed = (v, d = 2) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(d) : '--');
-/** 百分点：赔率与超额都带 %，不带会看成绝对收益 */
 const signedPct = (v, d = 2) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(d) + '%' : '--');
 const plain = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '--');
-const pctInt = v => (Number.isFinite(v) ? Math.round(v) + '%' : '--');
+const intPct = v => (Number.isFinite(v) ? Math.round(v) + '%' : '--');
+const dirClass = v => (!Number.isFinite(v) || Math.abs(v) < 1e-9 ? 'text-flat' : (v > 0 ? 'text-up' : 'text-down'));
 
-/** 当前处于哪个时段（只用于界面上那行小字） */
 function phaseLabel() {
   const bj = new Date(Date.now() + 8 * 3600 * 1000);
   const wd = bj.getUTCDay();
   if (wd === 0 || wd === 6) return '休市';
   const m = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-  const el = sessionElapsed();
+  const AM0 = 9 * 60 + 30;
+  const AM1 = 11 * 60 + 30;
+  const PM0 = 13 * 60;
+  const PM1 = 15 * 60;
+  let el = 0;
+  if (m > AM0 && m <= AM1) el = m - AM0;
+  else if (m > AM1 && m <= PM0) el = 120;
+  else if (m > PM0 && m <= PM1) el = 120 + (m - PM0);
+  else if (m > PM1) el = 240;
   if (el >= 240) return '已收盘';
   if (el > 0) return '盘中';
   if (m < 9 * 60 + 15) return '盘前';
@@ -50,41 +70,71 @@ function phaseLabel() {
   return '盘前';
 }
 
-const shortDay = ts => {
-  const d = new Date(ts);
-  return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`;
-};
+const shortDay = d => (d ? d.slice(5) : '');
+const agoText = d => (d >= 365 ? `${(d / 365).toFixed(1)} 年前`
+  : d >= 45 ? `${Math.round(d / 30)} 个月前`
+    : `${Math.max(1, d)} 天前`);
 
-/** 三档赔率里最有优势的那一档 */
-function bestHorizon(sample) {
-  if (!sample) return null;
-  const rows = [[5, sample.h5], [20, sample.h20], [60, sample.h60]]
-    .filter(x => Array.isArray(x[1]));
-  if (!rows.length) return null;
-  rows.sort((a, b) => b[1][0] - a[1][0]);
-  return { days: rows[0][0], ex: rows[0][1][0], win: rows[0][1][1] };
+
+/**
+ * 卡片底部说明。哪几档淡出、为什么淡出、概率数值能不能当真，
+ * 全按这只指数自己的校准结果生成——不同指数差别很大，
+ * 写死「5 日与 60 日淡着显示」不一定对。
+ */
+function noteText(d, c20, numOk, rankOk) {
+  const parts = [
+    `这三行是那 ${d.kUsed} 天之后真实发生过的涨跌：粗条 = 中间一半，细线 = 九成范围，竖线 = 中位。`,
+    `20 日这一档最差 ${signedPct(d.stats[20].worst, 1)}、最好 ${signedPct(d.stats[20].best, 1)}。`,
+  ];
+
+  const cal = d.calib || {};
+  const weak = HORIZONS.filter(hz => {
+    const c = cal[`h${hz}`];
+    return (!c || c.gain < 2) && (!c || c.ic < 0.30);
+  });
+
+  if (rankOk && !numOk && c20) {
+    // 压到一句：这段本来就长，再铺开就占六七行，用户会跳过
+    parts.push(`这个指数波动大，概率数值不够准（Brier 只改善 ${c20.gain.toFixed(1)}%），`
+      + `但高低排序有效（秩相关 ${c20.ic.toFixed(2)}），看相对高低就好。`);
+  }
+
+  if (weak.length) {
+    const names = weak.map(hz => `${hz} 日`).join('、');
+    parts.push(`${names}淡着显示，那几档历史上和抛硬币差不多。`);
+  }
+
+  return parts.join('');
 }
 
-/** 偏强 / 偏弱 · 短期 / 中期 */
-function stance(sample) {
-  if (!sample) return { text: '样本不足', tone: 'flat' };
-  const b = bestHorizon(sample);
-  if (!b) return { text: '样本不足', tone: 'flat' };
-  const tone = b.ex > 0.25 ? 'up' : (b.ex < -0.25 ? 'down' : 'flat');
-  const word = b.days <= 5 ? '短期' : (b.days <= 20 ? '短期偏中' : '中期');
-  const label = tone === 'up' ? '偏强' : (tone === 'down' ? '偏弱' : '中性');
-  return { text: `${label} · ${word}`, tone };
-}
+/**
+ * 「哪几档不能当真」——按这只指数自己的校准结果说。
+ * 写死「5 日与 60 日接近 50/50」不一定对：不同指数的校准差别很大，
+ * 说法必须跟着各自数据走。
+ */
+function weakDesc(d) {
+  const cal = d.calib || {};
+  const bad = [];        // 数值与排序都不行
+  const rankOnly = [];   // 数值不行、但排序有效
+  const solid = [];      // 数值站得住
 
-/** 当前状态在 16 格里按 T+20 超额排第几（1 = 最强） */
-function stateRank(d) {
-  const t = d.table;
-  if (!t || !d.sample) return null;
-  const rows = Object.entries(t.states)
-    .filter(([, v]) => Array.isArray(v.h20))
-    .sort((a, b) => b[1].h20[0] - a[1].h20[0]);
-  const i = rows.findIndex(([k]) => k === d.stateKey);
-  return i < 0 ? null : i + 1;
+  for (const hz of HORIZONS) {
+    const c = cal[`h${hz}`];
+    if (!c) { bad.push(hz); continue; }
+    if (c.gain >= 2) solid.push(hz);
+    else if (c.ic >= 0.30) rankOnly.push(hz);
+    else bad.push(hz);
+  }
+
+  const list = xs => xs.map(hz => `${hz} 日`).join('、');
+  const parts = [];
+  if (bad.length) parts.push(`${list(bad)}这${bad.length > 1 ? '几' : '一'}档的校准和抛硬币差不多`);
+  if (rankOnly.length) {
+    parts.push(`${list(rankOnly)}这一档概率的数值偏弱、但高低排序有效，只看相对高低`);
+  }
+  if (solid.length) parts.push(`${list(solid)}这档的概率数值才值得看`);
+  if (!bad.length && !rankOnly.length) return '三档的校准都优于抛硬币，但仍不足以当信号';
+  return parts.join('；');
 }
 
 export class Analysis {
@@ -99,14 +149,14 @@ export class Analysis {
     this.arms = null;
     this.armsLoading = false;
     this.error = null;
-    this.armsEl = null;
-    this.armsNoteEl = null;
+    this.expanded = false;
+    this.volumeScaled = false;
   }
 
   start() {
     if (this.active) return;
     this.active = true;
-    if (!this.data) this.paint();   // 先出骨架，别让首屏白着
+    if (!this.data) this.paint();
     this.refresh();
     this.timer = setInterval(() => this.refresh(), REFRESH_MS);
   }
@@ -124,7 +174,8 @@ export class Analysis {
   setIndex(id) {
     if (id === this.indexId) return;
     this.indexId = id;
-    this.data = peekAnalysis(id);
+    this.data = null;
+    this.expanded = false;
     this.error = null;
     this.paint();
     this.refresh({ force: true });
@@ -133,11 +184,36 @@ export class Analysis {
   async refresh(opt = {}) {
     if (!this.active && !opt.force) return;
     const seq = ++this.seq;
-
     try {
-      const data = await getAnalysis(this.indexId, opt);
-      if (seq !== this.seq) return;      // 切了指数，旧请求作废
-      this.data = data;
+      const [bars, barsSh, barsCyb, quotes] = await Promise.all([
+        fetchBars(this.indexId),
+        fetchBars('sh000001'),
+        fetchBars('sz399006'),
+        getQuotes([this.indexId], { maxAge: 3000 }),
+      ]);
+      if (seq !== this.seq) return;
+
+      const q = quotes.get(this.indexId);
+      if (!q || !q.valid) throw new Error('指数报价不可用');
+
+      const M = await analogMod();
+      if (seq !== this.seq) return;
+      const tv = M.todayVector(bars, barsSh, barsCyb);
+      if (!tv) throw new Error('日线不足 21 根，算不出特征');
+
+      // 盘中量比要折算成收盘口径，否则跟历史比没有意义
+      const adj = adjustVolumeRatio(tv.vr);
+      const today = { ...tv, vr: adj.vr, f: [tv.f[0], adj.vr, tv.f[2], tv.f[3], tv.f[4]] };
+
+      const res = M.analogs(this.indexId, today);
+      if (!res) throw new Error('历史样本不足');
+
+      this.volumeScaled = adj.scaled;
+      this.hMeta = M.historyMeta();
+      this.data = {
+        ...res,
+        price: q.price, pct: q.pct, change: q.change, amount: q.amount, time: q.time,
+      };
       this.error = null;
       this.paint();
       this.loadArms();
@@ -148,14 +224,6 @@ export class Analysis {
     }
   }
 
-  /**
-   * ARMS 单独一路：它要拉全 A 五千多只，比指数慢一个量级。
-   * 不能让它卡住主卡渲染，所以异步补。
-   *
-   * 不按 seq 丢弃结果：ARMS 是全市场广度，跟当前看哪只指数无关。
-   * 早先按 seq 判，60 秒刷新定时器的 ++seq 一撞上就算「过期」，
-   * 结果被静默扔掉，于是那格一直停在「--」。
-   */
   async loadArms() {
     if (this.armsLoading) return;
     this.armsLoading = true;
@@ -164,15 +232,12 @@ export class Analysis {
       const arms = await getArms();
       if (arms) this.arms = arms;
     } catch {
-      /* 拿不到就保持原样，页面显示「--」 */
+      /* 拿不到就显示 -- */
     } finally {
       this.armsLoading = false;
     }
-    // 值没变就别重绘：paint 会整页重建，60 秒一轮刷下来没必要一直抖
     const cur = this.arms;
-    const changed = !prev !== !cur
-      || (cur && (prev.arms !== cur.arms || prev.up !== cur.up || prev.down !== cur.down));
-    // 顶部小格与「方向」行说明都用 ARMS，统一重绘最省事（paint 内部保留 scrollTop）
+    const changed = !prev !== !cur || (cur && (!prev || prev.arms !== cur.arms || prev.up !== cur.up));
     if (this.active && changed) this.paint();
   }
 
@@ -189,12 +254,9 @@ export class Analysis {
   paint() {
     if (!this.bodyEl) return;
     const top = this.bodyEl.scrollTop;
-    clear(this.bodyEl);
-    this.armsEl = null;
-    this.armsNoteEl = null;
+    this.bodyEl.replaceChildren();
 
-    const tabBar = this.buildTabs();
-    this.bodyEl.appendChild(tabBar);
+    this.bodyEl.appendChild(this.buildTabs());
 
     if (this.error && !this.data) {
       this.bodyEl.appendChild(h('div.an-empty', {}, [
@@ -206,8 +268,7 @@ export class Analysis {
       return;
     }
 
-    const d = this.data;
-    if (!d) {
+    if (!this.data) {
       this.bodyEl.appendChild(h('div.an-skel', {}, [
         h('div.an-skel__card'), h('div.an-skel__card'), h('div.an-skel__card'),
       ]));
@@ -216,60 +277,55 @@ export class Analysis {
       return;
     }
 
+    const d = this.data;
     this.bodyEl.appendChild(this.buildHero(d));
-    this.bodyEl.appendChild(this.buildState(d));
-    this.bodyEl.appendChild(this.buildBase(d));
+    this.bodyEl.appendChild(this.buildAnalog(d));
+    // 「最像的那几天」明细表按需求隐藏。buildList 与 this.expanded 都还在，
+    // 想恢复只把这行打开即可——它只是主卡的佐证，删掉不影响结论。
     this.bodyEl.appendChild(this.buildQuad(d));
-    this.bodyEl.appendChild(this.buildRead(d));
+    this.bodyEl.appendChild(this.buildMethod(d));
     this.bodyEl.appendChild(this.buildFoot(d));
 
-    this.setStatus(`${phaseLabel()} · ${shortDay(d.at)}`);
+    this.setStatus(this.error
+      ? `取数失败 · 仍是 ${shortDay(d.asOf)} 的数据`
+      : `${phaseLabel()} · ${shortDay(d.asOf)}`);
     this.bodyEl.scrollTop = top;
   }
 
   buildTabs() {
     const bar = h('div.an-tabs', { role: 'tablist', 'aria-label': '选择指数' });
-    for (const it of ANALYSIS_INDICES) {
+    for (const it of INDICES) {
       const on = it.id === this.indexId;
-      const btn = h('button.an-tab' + (on ? '.is-active' : ''), {
+      bar.appendChild(h('button.an-tab' + (on ? '.is-active' : ''), {
         type: 'button',
         role: 'tab',
         text: it.short,
         'aria-selected': String(on),
         onclick: () => this.setIndex(it.id),
-      });
-      bar.appendChild(btn);
+      }));
     }
     return bar;
   }
 
   buildHero(d) {
-    const t = d.table;
     const hasArms = this.arms && Number.isFinite(this.arms.arms);
-
-    this.armsEl = h('strong.an-hero__num' + (hasArms ? '' : '.is-muted'), {
-      text: hasArms ? this.arms.arms.toFixed(2) : '--',
-    });
-    this.armsNoteEl = h('span.an-hero__note', {
-      text: hasArms ? `${this.arms.up}涨 ${this.arms.down}跌` : '全 A 广度',
-    });
-
+    const meta = INDICES.find(x => x.id === this.indexId) || INDICES[0];
     return h('div.an-hero', {}, [
       h('div.an-hero__top', {}, [
         h('div.an-hero__name', {}, [
-          h('span', { text: d.name }),
-          h('span.an-badge', { text: '三因子' }),
+          h('span', { text: meta.name }),
+          h('span.an-badge', { text: '相似日' }),
         ]),
         h('span.an-hero__time', {
           text: phaseLabel() === '盘前' || phaseLabel() === '休市'
-            ? `${d.asOf.slice(5)} 收盘`
+            ? `${shortDay(d.asOf)} 收盘`
             : phaseLabel(),
         }),
       ]),
 
       h('div.an-hero__price', {}, [
         h('strong', { text: fmtPrice(d.price, 2) }),
-        h('span.an-hero__pct.' + dirClass(d.pct), { text: fmtPct(d.pct) }),
+        h('span.an-hero__pct.' + dirClass(d.pct), { text: signedPct(d.pct) }),
       ]),
 
       h('div.an-hero__grid', {}, [
@@ -278,258 +334,267 @@ export class Analysis {
           h('span.an-hero__note', { text: '成交额' }),
         ]),
         h('div.an-cell', {}, [
-          h('strong.an-hero__num', { text: plain(d.volumeRatio) }),
-          h('span.an-hero__note', { text: d.volumeScaled ? '量比 · 折算' : '量比' }),
+          h('strong.an-hero__num', { text: plain(d.today.vr) }),
+          h('span.an-hero__note', { text: this.volumeScaled ? '量比 · 折算' : '量比' }),
         ]),
-        h('div.an-cell', {}, [this.armsEl, this.armsNoteEl]),
         h('div.an-cell', {}, [
-          h('strong.an-hero__num', { text: signed(d.premium) }),
-          h('span.an-hero__note', { text: '投机溢价' }),
+          h('strong.an-hero__num', { text: signed(d.today.rs, 1) }),
+          h('span.an-hero__note', { text: '相对强弱' }),
         ]),
-      ]),
-
-      h('div.an-hero__foot', {}, [
-        h('span', { text: '16 状态' }),
-        h('span.an-dot', { text: '·' }),
-        h('span', { text: `样本外排序 IC ${Number.isFinite(t.ic) ? t.ic.toFixed(2) : '--'}` }),
-        h('span.an-dot', { text: '·' }),
-        h('span', { text: d.quad ? `${d.quad.code} ${d.quad.name}` : '' }),
+        h('div.an-cell', {}, [
+          h('strong.an-hero__num' + (hasArms ? '' : '.is-muted'), {
+            text: hasArms ? this.arms.arms.toFixed(2) : '--',
+          }),
+          h('span.an-hero__note', {
+            text: hasArms ? `${this.arms.up}涨 ${this.arms.down}跌` : '全 A 广度',
+          }),
+        ]),
       ]),
     ]);
   }
 
-  buildState(d) {
-    const b = d.table.bounds;
-    const v = d.factors.v;
-    const armsNum = this.arms && Number.isFinite(this.arms.arms)
-      ? this.arms.arms.toFixed(2)
-      : '--';
+  /** 主卡：60 个相似日之后怎么走 */
+  buildAnalog(d) {
+    const s20 = d.stats[20];
+    const calOf = hz => (d.calib && d.calib[`h${hz}`] ? d.calib[`h${hz}`] : null);
+    const c20 = calOf(20);
 
-    const dirRow = h('div.an-row', {}, [
-      h('span.an-row__icon.an-row__icon--dir', { text: '向' }),
-      h('div.an-row__body', {}, [
-        h('div.an-row__title', {}, [
-          h('span.an-row__label', { text: '方向 · 涨跌幅' }),
-          h('strong.an-row__val.' + dirClass(d.pct), { text: fmtPct(d.pct) }),
+    // 「有用」是两件事，别混成一个判据：
+    //   gain（Brier 改善）高 = 概率的数值准，可以说「六成会涨」
+    //   ic（排序稳定）高      = 高低排序准，只能说「这格比那格强」
+    // 两者不一定同向：出现过 gain 只有 0.7% 但 ic 0.47 的指数，只看 gain
+    // 会把三档全部淡出，等于页面上什么都不给。
+    const numOk = (c20 ? c20.gain : 0) >= 5;
+    const rankOk = (c20 ? c20.ic : 0) >= 0.30;
+    const tag = numOk
+      ? { text: '20 日这档较可靠', cls: '.is-ok' }
+      : rankOk
+        ? { text: '排序可用 · 数值偏弱', cls: '' }
+        : { text: '信号偏弱', cls: '' };
+
+    // 三行共用一条刻度，才看得出长短
+    const lo = Math.min(...HORIZONS.map(x => d.stats[x].p10), 0);
+    const hi = Math.max(...HORIZONS.map(x => d.stats[x].p90), 0);
+    const pad = (hi - lo) * 0.08 || 1;
+    const min = lo - pad;
+    const max = hi + pad;
+    const span = (max - min) || 1;
+    const pos = v => ((v - min) / span) * 100;
+    // 刻度标的是细线两端（10%~90% 分位），不是加了留白的画布边界
+    const scaleLo = Math.min(...HORIZONS.map(x => d.stats[x].p10));
+    const scaleHi = Math.max(...HORIZONS.map(x => d.stats[x].p90));
+
+    const rows = HORIZONS.map(hz => {
+      const s = d.stats[hz];
+      const c = calOf(hz);
+      // 数值与排序都弱才淡出。只看 Brier 会把「排序强、数值弱」的指数整行抹掉，
+      // 那反而丢了它唯一有价值的部分。
+      const weak = (c ? c.gain : 0) < 2 && (c ? c.ic : 0) < 0.30;
+      return h('div.an-bar' + (weak ? '.is-weak' : ''), {}, [
+        h('div.an-bar__top', {}, [
+          h('span.an-bar__k', { text: `${hz} 日后` }),
+          h('span.an-bar__up', { text: `${intPct(s.up)} 上涨` }),
+          h('span.an-bar__v.' + dirClass(s.p50), { text: signedPct(s.p50, 1) }),
         ]),
-        h('p.an-row__sub', {
-          text: `${d.factors.d ? '收涨' : '收跌'}，记 D${d.factors.d}　·　广度 ARMS ${armsNum}`,
-        }),
-      ]),
-    ]);
-
-    // 折算说明只在盘中出现；收盘后不折算，也就没必要占一行字
-    const scaleNote = d.volumeScaled
-      ? `　·　按 ${Math.round(d.elapsed / 240 * 100)}% 折算`
-      : '';
-
-    const volRow = h('div.an-row', {}, [
-      h('span.an-row__icon.an-row__icon--vol', { text: '强' }),
-      h('div.an-row__body', {}, [
-        h('div.an-row__title', {}, [
-          h('span.an-row__label', { text: '强度 · 量比' }),
-          h('strong.an-row__val', { text: plain(d.volumeRatio) }),
+        h('div.an-track', {}, [
+          h('i.an-track__bed'),
+          h('i.an-track__zero', { style: { left: pos(0) + '%' } }),
+          h('i.an-track__range', { style: { left: pos(s.p10) + '%', width: (pos(s.p90) - pos(s.p10)) + '%' } }),
+          h('i.an-track__box' + (s.p50 >= 0 ? '.is-up' : '.is-down'), {
+            style: { left: pos(s.p25) + '%', width: Math.max(2, pos(s.p75) - pos(s.p25)) + '%' },
+          }),
+          h('i.an-track__med', { style: { left: pos(s.p50) + '%' } }),
         ]),
-        h('p.an-row__sub', {
-          text: v
-            ? `${VOL[v]}档 · 边界 ${b.vr.map(x => x.toFixed(2)).join(' / ')}${scaleNote}`
-            : '日线不足 6 根，无法计算量比',
-        }),
-      ]),
-    ]);
-
-    const premRow = h('div.an-row', {}, [
-      h('span.an-row__icon.an-row__icon--prem', { text: '质' }),
-      h('div.an-row__body', {}, [
-        h('div.an-row__title', {}, [
-          h('span.an-row__label', { text: '性质 · 投机溢价' }),
-          h('strong.an-row__val', { text: signed(d.premium) }),
-        ]),
-        h('p.an-row__sub', {
-          text: `${d.factors.p ? '高' : '低'}溢价档 · 分界 ${b.premium.toFixed(2)}　·　创业板 − 上证`,
-        }),
-      ]),
-    ]);
-
-    return h('div.an-card', {}, [
-      h('div.an-card__head', {}, [
-        h('h2.an-card__title', { text: '今日状态' }),
-        h('span.an-pill', { text: d.stateName }),
-      ]),
-      dirRow, volRow, premRow,
-      h('p.an-card__note', {
-        text: '口径：量比 = 当日成交量 ÷ 前 5 日均量（盘中线性折算）；'
-          + '投机溢价 = 创业板 − 上证，单位百分点；'
-          + 'ARMS = 涨跌家数比 ÷ 涨跌成交额比，仅参照、不参与判定。',
-      }),
-    ]);
-  }
-
-  buildBase(d) {
-    const s = d.sample;
-    const st = stance(s);
-
-    if (!s) {
-      return h('div.an-card.an-card--base', {}, [
-        h('div.an-card__head', {}, [
-          h('h2.an-card__title', { text: '研究基准 · 同状态历史赔率' }),
-          h('span.an-stance.is-flat', { text: '样本不足' }),
-        ]),
-        h('p.an-card__note', { text: '当前状态在历史样本里没有足够观测，不给赔率。' }),
       ]);
-    }
+    });
 
-    const kpi = (label, arr) => h('div.an-kpi', {}, [
-      h('strong.an-kpi__val.' + dirClass(arr[0]), { text: signedPct(arr[0]) }),
-      h('span.an-kpi__label', { text: label }),
-    ]);
-
-    const meta = (label, val, warn) => h('div.an-meta', {}, [
-      h('strong.an-meta__val' + (warn ? '.is-warn' : ''), { text: val }),
-      h('span.an-meta__label', { text: label }),
-    ]);
-
-    const b = bestHorizon(s);
-    const win = Array.isArray(s.h20) ? s.h20[1] : null;
-    const conf = Array.isArray(s.h20) ? s.h20[2] : null;
-    const rank = stateRank(d);
-
-    return h('div.an-card.an-card--base', {}, [
+    return h('div.an-card.an-card--analog', {}, [
       h('div.an-card__head', {}, [
-        h('h2.an-card__title', { text: '研究基准 · 同状态历史赔率' }),
-        h('span.an-stance.is-' + st.tone, { text: st.text }),
+        h('h2.an-card__title', { text: `历史上和今天最像的 ${d.kUsed} 天` }),
+        h('span.an-tag' + tag.cls, { text: tag.text }),
       ]),
 
-      h('div.an-kpis', {}, [
-        kpi('T+5', s.h5),
-        kpi('T+20', s.h20),
-        kpi('T+60', s.h60),
-      ]),
-
-      h('div.an-metas', {}, [
-        meta('样本数', String(s.n)),
-        meta('20日胜率', pctInt(win)),
-        meta('置信度', pctInt(conf), conf != null && conf < 60),
-        meta('该格序位', rank ? `${rank}/16` : '--'),
-      ]),
-
-      b ? h('div.an-window', {}, [
-        h('span', {
-          text: b.ex > 0.25
-            ? `建议窗口 ${b.days} 日 —— 三档里超额最高的一档`
-            : '三档超额都不明显，没有值得持有的窗口',
-        }),
-      ]) : null,
-
-      h('p.an-card__note', {
-        text: '基准口径：16 格（方向 × 量比 × 溢价）全样本分层统计，超额已减去同期全样本均值，未计成本。'
-          + (rank ? `当前这一格的 T+20 超额在 16 格里排第 ${rank} 位。` : ''),
-      }),
-    ]);
-  }
-
-  buildQuad(d) {
-    const quad = d.table.quad;
-    if (!quad) return h('div');
-    const order = ['1-1', '1-0', '0-1', '0-0'];
-
-    const head = h('div.an-qtr.an-qtr--head', {}, [
-      h('span', { text: '形态' }),
-      h('span', { text: 'T+5' }),
-      h('span', { text: 'T+20' }),
-      h('span', { text: 'T+60' }),
-      h('span', { text: '胜率' }),
-      h('span', { text: 'n' }),
-    ]);
-
-    const rows = [head];
-    for (const key of order) {
-      const q = quad[key];
-      if (!q) continue;
-      const cur = key === d.quadKey;
-      const numCell = v => h('span.' + dirClass(v), { text: signed(v) });
-      rows.push(h('div.an-qtr' + (cur ? '.is-cur' : ''), {}, [
-        h('span.an-qtr__name', {}, [
-          h('em', { text: (d.quad && cur ? d.quad.code : codeOf(key)) }),
-          h('i', { text: QUAD_NAME[key] }),
+      h('div.an-lead', {}, [
+        h('p.an-lead__cap', { text: `这 ${d.kUsed} 天，20 个交易日之后` }),
+        h('div.an-lead__row', {}, [
+          h('strong.an-lead__num', { text: intPct(s20.up) }),
+          h('span.an-lead__unit', { text: '是涨的' }),
         ]),
-        numCell(q.h5[0]),
-        numCell(q.h20[0]),
-        numCell(q.h60[0]),
-        h('span', { text: pctInt(q.h20[1]) }),
-        h('span', { text: String(q.n) }),
-      ]));
-    }
-
-    return h('div.an-card', {}, [
-      h('div.an-card__head', {}, [
-        h('h2.an-card__title', { text: '四象限坐标 · 超额与胜率' }),
-        h('span.an-card__hint', { text: '方向 × 溢价' }),
+        h('p.an-lead__sub', {}, [
+          h('span', { text: '中位 ' }),
+          h('em.' + dirClass(s20.p50), { text: signedPct(s20.p50, 1) }),
+          h('span', { text: `，一半的结果落在 ${signedPct(s20.p25, 1)} 到 ${signedPct(s20.p75, 1)} 之间` }),
+        ]),
       ]),
-      h('div.an-qtrs', {}, rows),
+
+      h('div.an-bars', {}, [
+        h('div.an-bar.an-bar--legend', {}, [
+          h('div.an-bar__top', {}, [
+            h('span.an-bar__k', { text: '' }),
+            h('span.an-bar__up', { text: '上涨概率' }),
+            h('span.an-bar__v', { text: '中位涨跌' }),
+          ]),
+        ]),
+        ...rows,
+      ]),
+
+      h('div.an-scale', {}, [
+        h('span', { text: signedPct(scaleLo, 1) }),
+        h('span', { text: '0' }),
+        h('span', { text: signedPct(scaleHi, 1) }),
+      ]),
+
       h('p.an-card__note', {
-        text: '四象限只用来确认「今天站在历史的哪个位置」。它对单个交易日的方向几乎没有解释力，'
-          + '真正有信息量的是上面那一格的样本。',
+        text: noteText(d, c20, numOk, rankOk),
       }),
     ]);
   }
 
-  buildRead(d) {
-    const s = d.sample;
-    const lines = [];
-
-    lines.push(
-      `方向：${fmtPct(d.pct)}，${d.factors.d ? '收涨' : '收跌'}；量比 ${plain(d.volumeRatio)}（${VOL[d.factors.v] || '--'}档）；`
-      + `溢价 ${signed(d.premium)}（${d.factors.p ? '高' : '低'}溢价）→ ${d.stateName}。`);
-
-    if (this.arms) {
-      const tone = this.arms.arms > 1
-        ? `家数优势（${this.arms.ratioCount.toFixed(2)} 倍）大于成交额优势（${this.arms.ratioAmt.toFixed(2)} 倍），上涨股的平均资金强度反而弱于下跌股`
-        : `成交额优势（${this.arms.ratioAmt.toFixed(2)} 倍）大于家数优势（${this.arms.ratioCount.toFixed(2)} 倍），资金集中在上涨股上`;
-      lines.push(`广度：ARMS ${this.arms.arms.toFixed(2)}，${tone}。它只做参照——历史全 A 家数拿不到，没进模型。`);
-    }
-
-    if (s) {
-      // T+20 与后面的数字之间用不换行空格：普通空格会让「T+20」孤零零留在行尾
-      lines.push(
-        `基准：同状态 ${s.n} 个历史样本，T+5\u00A0${signedPct(s.h5[0])}、T+20\u00A0${signedPct(s.h20[0])}、`
-        + `T+60\u00A0${signedPct(s.h60[0])}（相对全样本均值的超额），20 日胜率 ${pctInt(s.h20[1])}。`);
-      const b = bestHorizon(s);
-      lines.push(b && b.ex > 0.25
-        ? `窗口：三档里 ${b.days} 日一档超额最高，这个形态的收益集中在${b.days === 5 ? '一周' : b.days === 20 ? '一个月' : '三个月'}内，拉长反而回吐。`
-        : '窗口：三档超额都落在噪声范围内，这个形态没有可用的持有期。');
-    }
-
-    const t = d.table;
-    lines.push(
-      `体检：样本外排序 IC ${Number.isFinite(t.ic) ? t.ic.toFixed(2) : '--'}（16 格排序在未参与拟合的样本里还剩多少），`
-      + `符号保持率 ${pctInt(t.oob)}（${t.oobN} 格里多少格的正负号没翻）。`
-      + (t.oob < 55
-        ? '符号保持率接近抛硬币，说明单格赔率的绝对值不能外推，只能看它在 16 格里的相对高低。'
-        : '符号保持率高于抛硬币，但只有 16 格参与统计，仍不足以当作信号。'));
+  buildList(d) {
+    const rows = this.expanded ? d.rows : d.rows.slice(0, SHOW_ROWS);
+    const item = r => h('div.an-sim', {}, [
+      h('div.an-sim__main', {}, [
+        h('span.an-sim__date', { text: shortDay(r.date) }),
+        h('span.an-sim__pct.' + dirClass(r.pct), { text: signedPct(r.pct) }),
+        h('span.an-sim__fwd.' + dirClass(r.h20), { text: `20日后 ${signedPct(r.h20, 1)}` }),
+      ]),
+      h('div.an-sim__sub', {}, [
+        h('span', { text: `量比 ${plain(r.vr)}` }),
+        h('span.an-dot', { text: '·' }),
+        h('span', { text: `强弱 ${signed(r.rs, 1)}` }),
+        h('span.an-dot', { text: '·' }),
+        h('span', { text: agoText(r.calDays) }),
+      ]),
+    ]);
 
     return h('div.an-card', {}, [
-      h('div.an-card__head', {}, [h('h2.an-card__title', { text: '模型判读' })]),
-      h('ol.an-read', {}, lines.map(x => h('li', { text: x }))),
+      h('div.an-card__head', {}, [
+        h('h2.an-card__title', { text: '最像的那几天' }),
+        h('span.an-card__hint', { text: '按相似度排序' }),
+      ]),
+      h('div.an-sims', {}, rows.map(item)),
+      d.rows.length > SHOW_ROWS
+        ? h('button.an-more', {
+          type: 'button',
+          text: this.expanded ? '收起' : `展开全部 ${d.rows.length} 天`,
+          onclick: () => {
+            this.expanded = !this.expanded;
+            this.paint();
+          },
+        })
+        : null,
+    ]);
+  }
+
+  /** 四象限参照：今天站在哪一类 */
+  buildQuad(d) {
+    const q = QUAD[d.quadKey];
+    const rows = ['1-1', '1-0', '0-1', '0-0'].map(key => {
+      const stat = d.quad && d.quad[key];
+      if (!stat) return null;
+      const cur = key === d.quadKey;
+      return h('div.an-qt' + (cur ? '.is-cur' : ''), {}, [
+        h('span.an-qt__name', {}, [
+          h('em', { text: QUAD[key].code }),
+          h('i', { text: QUAD[key].name }),
+        ]),
+        h('span.an-qt__up', { text: intPct(stat.up) }),
+        h('span.an-qt__med.' + dirClass(stat.med), { text: signedPct(stat.med, 1) }),
+        h('span.an-qt__n', { text: String(stat.n) }),
+      ]);
+    }).filter(Boolean);
+
+    return h('div.an-card.an-card--quad', {}, [
+      h('div.an-card__head', {}, [
+        h('h2.an-card__title', { text: '今天站在哪一类' }),
+        h('span.an-pill', { text: q ? `${q.code} ${q.name}` : '--' }),
+      ]),
+      h('div.an-qts', {}, [
+        h('div.an-qt.an-qt--head', {}, [
+          h('span', { text: '方向 × 强弱' }), h('span', { text: '20日涨' }),
+          h('span', { text: '中位' }), h('span', { text: 'n' }),
+        ]),
+        ...rows,
+      ]),
+      h('p.an-card__note', {
+        text: '四类只做定位用：同样是「跌」，小盘强与小盘弱之后的表现并不一样，'
+          + '但单看类别远不如上面那 60 个相似日具体。',
+      }),
+    ]);
+  }
+
+  /** 方法：参数、校准、局限。默认收起 */
+  buildMethod(d) {
+    const cal = d.calib || {};
+    const c20 = cal.h20 || null;
+
+    const binRow = b => h('div.an-cal__row', {}, [
+      h('span', { text: `${Math.round(b[0] * 100)}~${Math.round(Math.min(b[1], 1) * 100)}%` }),
+      h('span', { text: String(b[2]) }),
+      h('span', { text: `${b[3]}%` }),
+      h('span', { text: `${b[4]}%` }),
+    ]);
+
+    const calBlock = c20 && c20.bins.length ? h('div.an-cal', {}, [
+      h('div.an-cal__row.an-cal__row--head', {}, [
+        h('span', { text: '预测收涨' }), h('span', { text: '样本' }),
+        h('span', { text: '预测' }), h('span', { text: '实际' }),
+      ]),
+      ...c20.bins.map(binRow),
+    ]) : null;
+
+    const m = this.hMeta;
+    return h('details.an-method', {}, [
+      h('summary.an-method__sum', { text: '方法 · 这 60 天是怎么挑出来的' }),
+      h('div.an-method__body', {}, [
+        h('p.an-method__p', {
+          text: '把今天和历史上每一个交易日都放进同一个五维空间，算距离，取最近的 60 天。'
+            + '五个维度是：当日涨跌幅、量比、20 日动量、20 日波动、20 日相对强弱（创业板 − 上证，'
+            + '衡量的是当时资金偏小盘还是偏大盘，三只指数共用同一条）。'
+            + '每个维度都按历史分布标准化，所以「涨 2%」和「量比 1.2」不会因为量纲不同而失衡。',
+        }),
+        h('p.an-method__p', {
+          text: `两条硬规则：相似的交易日之间至少隔 ${m.gap} 个交易日（相邻日几乎是同一段行情，`
+            + '不隔开的话 60 个邻居其实只有十来个独立样本）；候选日必须「60 个交易日的收益都走完」，'
+            + '这样三个持有期看的是同一批日子。',
+        }),
+        calBlock,
+        c20 ? h('p.an-method__p', {
+          text: '上表是走查结果：把预测的「收涨概率」分四档，看实际兑现了多少。'
+            + `按 Brier 分数算，比「永远猜 50%」好 ${c20.gain.toFixed(1)}%；`
+            + `预测中位与实际的秩相关 ${c20.ic.toFixed(2)}；`
+            + `把预测最强与最弱的 1/5 分开，实际差 ${signedPct(c20.spread, 1)}。`
+            + `样本 ${c20.n} 个交易日。`,
+        }) : null,
+        h('p.an-method__p.an-method__p--warn', {
+          text: '三条边界：① 概率是「历史上相似日子的频率」，不是未来概率，市场环境换了就不可比；'
+            + `② ${weakDesc(d)}；`
+            + `③ 历史库截止 ${m.lastDate}，之后的新交易日只会被匹配、不会进库，更新要重新生成数据文件。`,
+        }),
+      ]),
     ]);
   }
 
   buildFoot(d) {
-    const t = d.table;
-    // 日期单独裹一层 nowrap：不加的话「2026-10-28」会断在连字符处，尾巴掉到下一行
+    const m = this.hMeta;
     const nb = text => h('span.an-nb', { text });
-    return h('div.an-foot', {}, [
+    const out = [
       h('p', {}, [
-        `基准样本 ${t.n} 个交易日（`,
-        nb(d.meta.from), ' 至 ', nb(d.meta.to),
-        '，构建于 ', nb(d.meta.builtAt), '）。',
+        '历史库 ', nb(m.from), ' 至 ', nb(m.lastDate), `（${m.bars} 个交易日）。能参与匹配的是 `,
+        nb(m.poolFrom), ' 至 ', nb(m.poolTo), '——最后 60 个交易日要先等收益走完。',
+
       ]),
-      h('p', {
-        text: '赔率是历史条件分布的描述，不是预测。A 股 20 日维度上这套划分的排序能力很弱，'
-          + '把体检指标一起摆出来是为了看清边界，而不是给一个看起来精确的数字。',
-      }),
-    ]);
+    ];
+    if (m.ageDays > 0) {
+      out.push(h('p.an-foot__warn', {}, [
+        '注意：这份历史库停在 ', nb(m.lastDate), `，已经 ${m.ageDays} 天没有更新。`
+        + '页面照旧用它做匹配，但越久越不准，要重新生成数据文件才会滚到最新。',
+      ]));
+    }
+    out.push(h('p', {
+      text: '这 60 天之后的涨跌是已经发生的历史，不是对未来的预测。样本有限、市场环境会变，'
+        + '未计交易成本与冲击成本，指数本身也不可直接交易。',
+    }));
+    return h('div.an-foot', {}, out);
   }
 }
-
-const codeOf = key => ({ '1-1': 'C1', '1-0': 'C2', '0-1': 'C3', '0-0': 'C4' }[key] || '');

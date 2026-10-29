@@ -41,11 +41,38 @@ const SEED_DROP = ['hf_GC'];   // v1.17 起黄金改用「现货 + 人民币账�
 const POOL_IDS = INDEX_POOL.map(s => s.id);
 const POOL_SET = new Set(POOL_IDS);
 
+/** 可选皮肤。classic = 不设 data-skin，走 tokens.css 的原版变量 */
+export const SKIN_OPTIONS = [
+  { value: 'snowmiku', label: '雪初音' },
+  { value: 'manga',    label: '漫画' },
+  { value: 'classic',  label: '原版' },
+];
+const SKIN_VALUES = new Set(SKIN_OPTIONS.map(x => x.value));
+
 const DEFAULT_PREFS = {
-  theme: 'dark',      // dark | auto | light —— 行情类 App 默认深色，可切跟随系统或浅色
+  // v1.38 起默认雪初音。她是雪白底，所以明暗也跟着改成浅色（昼版）。
+  // 老数据靠 migratePrefs() 做一次性迁移，见下。
+  theme: 'light',     // light | dark | auto —— 两套皮肤各有昼/夜版，原版沿用旧语义
+  skin: 'snowmiku',   // snowmiku | manga | classic
   sort: 'pctDesc',    // pctDesc | chgDesc | flowDesc | nameAsc
   lastTab: 'board',
 };
+
+/**
+ * v1.38 皮肤迁移：老数据里根本没有 skin 字段。
+ * 这批用户第一次升级时统一给「雪初音·昼」——如果只补 skin 而留着老的
+ * theme:'dark'，他们会直接落进雪夜深色版，跟设计时那套雪白冰蓝不是一回事。
+ * 已经写过 skin 的用户完全尊重原值，不再动第二次。
+ */
+function migratePrefs(raw) {
+  const p = { ...DEFAULT_PREFS, ...(raw || {}) };
+  if (!raw || !('skin' in raw)) {
+    p.skin = 'snowmiku';
+    p.theme = 'light';
+  }
+  if (!SKIN_VALUES.has(p.skin)) p.skin = 'snowmiku';
+  return p;
+}
 
 let state = null;
 let persistable = true;
@@ -110,7 +137,7 @@ export function initStore() {
       indexIds: sanitizeIndexIds(parsed.indexIds),
       items: items.filter(it => (seen.has(it.id) ? false : (seen.add(it.id), true))).slice(0, MAX_ITEMS),
       nteam: nteam.filter(it => (nteamSeen.has(it.id) ? false : (nteamSeen.add(it.id), true))).slice(0, MAX_ITEMS),
-      prefs: { ...DEFAULT_PREFS, ...(parsed.prefs || {}) },
+      prefs: migratePrefs(parsed.prefs),
       // 必须把播种标记读回来：漏了这一步 seedOnce() 每次启动都会以为「没播过」，
       // 于是被用户删掉的 SEED_ADD 品种每次重进都会复活
       seed: Number.isFinite(parsed.seed) ? parsed.seed : 0,
@@ -352,6 +379,25 @@ export function applyTheme() {
     const mq = window.matchMedia('(prefers-color-scheme: light)');
     root.setAttribute('data-theme', mq.matches ? 'light' : 'dark');
   }
+}
+
+/**
+ * 应用到 <html> 的 data-skin。
+ * classic = 移除属性，让 tokens.css 的原版变量生效。
+ * URL 上的 ?skin= 优先级最高，留作开发时预览实验皮肤用。
+ */
+export function applySkin() {
+  const root = document.documentElement;
+  const urlSkin = new URLSearchParams(location.search).get('skin');
+  if (urlSkin) {
+    // classic 在 URL 上也要真的「不设属性」，跟首屏脚本、设置项保持一致
+    if (urlSkin === 'classic') root.removeAttribute('data-skin');
+    else root.setAttribute('data-skin', urlSkin);
+    return;
+  }
+  const skin = getPrefs().skin;
+  if (skin && skin !== 'classic') root.setAttribute('data-skin', skin);
+  else root.removeAttribute('data-skin');
 }
 
 /** 是否可持久化（隐私模式下会是 false） */

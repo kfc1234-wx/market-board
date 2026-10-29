@@ -270,7 +270,7 @@ export class Hao {
     this.countEl.textContent = `${total} 只`;
 
     if (!valid.length) {
-      this.setStatus(this.at ? '行情暂时取不到' : '加载中…');
+      this.setStatus(this.at ? '行情暂时取不到' : `正在取 ${HAO_LIST.length} 只报价…`);
       return;
     }
 
@@ -367,6 +367,9 @@ export class Hao {
 
   start() {
     this.active = true;
+    // 冷启要批量取 100 只报价（实测约 3s），期间必须说清在取什么；
+    // 已有数据时不要覆盖上次的「100/100 只有效」，否则每次进页都闪一下
+    if (!this.at) this.setStatus(`正在取 ${HAO_LIST.length} 只报价…`);
     this.load();
     this.schedule();
   }
@@ -436,7 +439,7 @@ class BucketPanel {
       onclick: () => this.hide(),
     });
 
-    this.el = h('div.hb', { hidden: true }, [
+    this.el = h('div.hb.hb--hao', { hidden: true }, [
       h('div.hb__bar', {}, [back, h('div.hb__titles', {}, [this.titleEl, this.subEl])]),
       this.bodyEl,
     ]);

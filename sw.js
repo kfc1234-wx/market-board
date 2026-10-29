@@ -14,7 +14,7 @@
 // 免得又出现「界面上写着 v1.21、实际跑着 v1.28」这种对不上的情况。
 // importScripts 是同步的，必须在顶层直接调用；它拿不到时退回内置值，
 // 宁可版本号旧一点，也不能让 SW 因为一个 404 装不上。
-let VERSION = 'v1.31.0';
+let VERSION = 'v1.40.0';
 try {
   importScripts('./version.js');
   if (self.__APP_CACHE__) VERSION = self.__APP_CACHE__;
@@ -31,6 +31,11 @@ const ASSETS = [
   './css/tokens.css',
   './css/base.css',
   './css/pages.css',
+  './css/skin-manga.css',
+  './css/skin-snowmiku.css',
+  './assets/miku/face.webp',
+  './assets/miku/empty.webp',
+  './assets/miku/scene.webp',
   './js/main.js',
   './js/core/router.js',
   './js/core/store.js',
@@ -45,7 +50,8 @@ const ASSETS = [
   './js/data/indicators.js',
   './js/data/breadth.js',
   './js/data/analysis.js',
-  './js/data/analysis-data.js',
+  './js/data/analog.js',
+  './js/data/analysis-history.js',
   './js/data/pool-a.js',
   './js/data/dividend.js',
   './js/data/sources/tencent.js',

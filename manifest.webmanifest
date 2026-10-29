@@ -22,6 +22,11 @@
       "name": "指数行情",
       "short_name": "指数",
       "url": "./index.html#/indices"
+    },
+    {
+      "name": "行情分析",
+      "short_name": "分析",
+      "url": "./index.html#/analysis"
     }
   ],
   "icons": [

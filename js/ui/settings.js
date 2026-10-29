@@ -1,10 +1,9 @@
 /** 设置页 */
 
 import { h, clear } from '../util/dom.js';
-import { getPrefs, setPref, applyTheme, getItems, canPersist } from '../core/store.js';
+import { getPrefs, setPref, applyTheme, applySkin, SKIN_OPTIONS, getItems, canPersist } from '../core/store.js';
 import { invalidate } from '../data/quotes.js';
 import { toast } from './toast.js';
-import { runSelfTest, showSelfTestPanel } from '../dev/selftest.js';
 
 const THEMES = [
   { value: 'auto', label: '跟随系统' },
@@ -38,6 +37,23 @@ export function initSettings({ body, onThemeChange }) {
     // ---- 外观 ----
     body.appendChild(h('div.sec-title', { text: '外观' }));
 
+    const skinSeg = h('div.segmented');
+    for (const sk of SKIN_OPTIONS) {
+      skinSeg.appendChild(h('button', {
+        type: 'button',
+        text: sk.label,
+        class: prefs.skin === sk.value ? 'is-active' : '',
+        onclick: () => {
+          setPref('skin', sk.value);
+          applySkin();
+          // 图表是按 CSS 变量取色画进 canvas 的，换皮肤必须重画，
+          // 否则 K 线与分时还留着上一套配色
+          onThemeChange?.();
+          render();
+        },
+      }));
+    }
+
     const seg = h('div.segmented');
     for (const t of THEMES) {
       seg.appendChild(h('button', {
@@ -55,7 +71,12 @@ export function initSettings({ body, onThemeChange }) {
 
     body.appendChild(h('div.setgroup', {}, [
       h('div.setrow', {}, [
-        h('span.setrow__label', { text: '主题' }),
+        h('span.setrow__label', { text: '皮肤' }),
+        skinSeg,
+      ]),
+      h('div.setrow', {}, [
+        // 两套皮肤各自有昼 / 夜两版，所以这里不再是「被皮肤盖死的设置」
+        h('span.setrow__label', { text: '明暗' }),
         seg,
       ]),
     ]));
@@ -128,8 +149,11 @@ export function initSettings({ body, onThemeChange }) {
       h('div.setrow', {
         onclick: async () => {
           toast('正在检测数据源…');
-          const results = await runSelfTest();
-          showSelfTestPanel(results);
+          // 按需加载：自检会连带拉进 39KB 的全市场代码表（pool-a.js），
+          // 静态引入等于让每个用户为「偶尔点一次」的功能付首屏代价
+          const m = await import('../dev/selftest.js');
+          const results = await m.runSelfTest();
+          m.showSelfTestPanel(results);
         },
       }, [
         h('span.setrow__label', { text: '数据源自检' }),

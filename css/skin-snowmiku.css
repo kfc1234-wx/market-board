@@ -1,0 +1,494 @@
+/* ============================================================
+   皮肤 B · 雪初音 Snow Miku —— 角色主题
+   ------------------------------------------------------------
+   不是「换一套配色」，是把角色语言放进界面：
+
+     · 顶栏标题前是她的 Q 版形象（白发双马尾 + 初音绿眼睛 + 雪结晶发饰）
+     · 底色是雪白到冰蓝的渐变，叠细雪点
+     · 卡片是「雪块」：白底、冰蓝边、柔和蓝影、大圆角
+     · 顶栏下沿一条冰线 + 雪花分隔，底栏是冰面
+     · 强调色只用一个：初音绿 #39C5BB（官方发色）
+
+   形象是自绘的简笔同人，不是官方立绘；本 app 自用，不涉商用。
+   昼 / 夜两版共用 data-skin="snowmiku"，靠 data-theme 切换。
+   预览：?skin=snowmiku
+   ============================================================ */
+
+:root[data-skin="snowmiku"] {
+  /* ---------- 雪白与冰蓝 ---------- */
+  --bg: #F1FAFF;
+  --bg-deep: #E2F3FF;
+  --bg-elev: #FFFFFF;
+  --bg-elev-2: #F3FBFF;
+  --bg-elev-3: #E6F5FD;
+  --bg-veil: rgba(241, 250, 255, .92);
+  --bg-mask: rgba(30, 60, 80, .28);
+  --bg-skel: #EAF6FD;
+
+  /* 深蓝灰文字，避免纯黑压不住雪色 */
+  --text: #173442;
+  --text-2: #4C6E80;
+  --text-3: #7E9CAC;
+
+  --line: rgba(57, 197, 187, .30);
+  --line-strong: rgba(57, 197, 187, .58);
+
+  /* 涨跌保持中国习惯，只稍微调得干净一点 */
+  --up: #F0395C;
+  --down: #0C9C74;
+  --flat: #7E93A0;
+  --up-bg: rgba(240, 57, 92, .11);
+  --down-bg: rgba(12, 156, 116, .11);
+
+  /* 初音绿：整套唯一的强调色，用量克制 */
+  --accent: #39C5BB;
+  --accent-2: #8AE6E0;
+  --accent-ink: #FFFFFF;
+  --accent-weak: rgba(57, 197, 187, .15);
+  --accent-3: #6FC6E8;
+  --accent-3-weak: rgba(111, 198, 232, .16);
+  --lit: #E0A93C;
+  --warn: #C47A1E;
+  --warn-bg: rgba(196, 122, 30, .12);
+
+  --chart-grid: rgba(57, 197, 187, .20);
+  --chart-axis: #7E9CAC;
+  --chart-ma5: #E0A93C;
+  --chart-ma10: #5AA8E0;
+  --chart-ma20: #9B8BE0;
+
+  --card-grad: linear-gradient(168deg, #FFFFFF 0%, #F4FCFF 62%, #EAF7FE 100%);
+  --card-grad-2: linear-gradient(168deg, #FFFFFF 0%, #F7FDFF 100%);
+  --card-grad-3: linear-gradient(160deg, rgba(57, 197, 187, .07), rgba(111, 198, 232, .06));
+  --deco-1: rgba(57, 197, 187, .18);
+  --deco-2: rgba(111, 198, 232, .18);
+  --paw: #39C5BB;
+  --star: rgba(57, 197, 187, .10);
+  --petal: rgba(138, 230, 224, .55);
+
+  /* 阴影偏冷：雪地上的影子是蓝的，不是黑的 */
+  --shadow-card: 0 1px 2px rgba(43, 108, 130, .06), 0 10px 24px -16px rgba(43, 108, 130, .45);
+  --shadow-soft: 0 2px 8px -5px rgba(43, 108, 130, .38);
+  --shadow-pop: 0 16px 40px -18px rgba(43, 108, 130, .55);
+  --hl: inset 0 1px 0 #FFFFFF;
+
+  --radius-sm: 12px;
+  --radius: 20px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+
+  /* 顶栏形象 */
+  /* 形象用实图：圆形 alpha 已烘进图片（144 / 288px WebP，共 28KB）。
+     之前的简笔 SVG 在 30px 下只能看出一个白团，认不出是她。 */
+  --miku: url("../assets/miku/face.webp");
+  --empty-art: url("../assets/miku/empty.webp");
+  /* 雪花蒙版：只提供 alpha，颜色交给 background-color，昼/夜各自调 */
+  --snowflake: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg stroke='%23000' stroke-width='1.9' stroke-linecap='round' fill='none'%3E%3Cpath d='M12 2.6v18.8M3.9 7.3l16.2 9.4M20.1 7.3L3.9 16.7'/%3E%3Cpath d='M12 6.3l2.6-2.1M12 6.3L9.4 4.2M12 17.7l2.6 2.1M12 17.7l-2.6 2.1'/%3E%3C/g%3E%3C/svg%3E");
+  --flake: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg stroke='%2339C5BB' stroke-width='1.6' stroke-linecap='round' fill='none'%3E%3Cpath d='M12 2v20M3.5 7l17 10M20.5 7l-17 10'/%3E%3Cpath d='M12 5.6l2.6-2M12 5.6L9.4 3.6M12 18.4l2.6 2M12 18.4l-2.6 2'/%3E%3C/g%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ---------- 底：雪白到冰蓝，叠两层细雪点 ---------- */
+:root[data-skin="snowmiku"] body {
+  background-image:
+    radial-gradient(120% 60% at 50% -12%, rgba(255, 255, 255, .95), transparent 62%),
+    radial-gradient(90% 50% at 100% 0%, rgba(111, 198, 232, .22), transparent 58%),
+    radial-gradient(circle, rgba(57, 197, 187, .16) 1px, transparent 1.1px),
+    radial-gradient(circle, rgba(111, 198, 232, .14) 1px, transparent 1.1px);
+  background-size: 100% 100%, 100% 100%, 26px 26px, 46px 46px;
+  background-position: 0 0, 0 0, 0 0, 13px 23px;
+}
+
+/* ---------- 顶栏：她的头像 + 冰线 + 雪花 ---------- */
+:root[data-skin="snowmiku"] .topbar {
+  background: linear-gradient(180deg, #FFFFFF 0%, #EFFAFF 100%);
+  border-bottom: 1px solid rgba(57, 197, 187, .34);
+  box-shadow: 0 2px 14px -8px rgba(43, 108, 130, .45);
+}
+
+/* 标题前的小头像。h1 的 ::before 在 inline-block 下能与文字同行 */
+:root[data-skin="snowmiku"] .topbar h1::before {
+  content: "";
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+  margin-right: 8px;
+  vertical-align: -10px;
+  /* 关键：base.css 的 .topbar__title h1::before 用 mask: var(--paw-mask)
+     把背景裁成猫爪。不解掉的话，这里放什么图都只会显示一个爪印。 */
+  -webkit-mask: none;
+  mask: none;
+  background: var(--miku) center / cover no-repeat;
+  border-radius: 50%;
+  /* 图片自带圆形 alpha，但边缘是雪景的浅灰白，落在白顶栏上会融掉，
+     补一圈初音绿细环 + 冷色投影，像一枚贴纸贴在那儿 */
+  box-shadow:
+    0 0 0 1.5px rgba(57, 197, 187, .55),
+    0 3px 8px -3px rgba(43, 108, 130, .45);
+}
+
+/* 状态行前加一片雪花，像「天气：雪」 */
+:root[data-skin="snowmiku"] .topbar__status::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background: var(--flake) center / contain no-repeat;
+  opacity: .75;
+}
+
+/* ---------- 卡片：雪块 ---------- */
+:root[data-skin="snowmiku"] .row,
+:root[data-skin="snowmiku"] .icard,
+:root[data-skin="snowmiku"] .an-card,
+:root[data-skin="snowmiku"] .setgroup {
+  border: 1px solid rgba(57, 197, 187, .30);
+  border-radius: 22px;
+  box-shadow: var(--shadow-card), var(--hl);
+  position: relative;
+}
+
+/* 卡片右上角一片很淡的雪花，作为「雪落在卡上」的层次 */
+:root[data-skin="snowmiku"] .row::after,
+:root[data-skin="snowmiku"] .icard::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  background: var(--flake) center / contain no-repeat;
+  opacity: .26;
+  pointer-events: none;
+}
+/* icard 原本用 ::after 做过装饰，这里显式覆盖掉 display:none */
+:root[data-skin="snowmiku"] .icard::after { display: block; }
+
+/* ---------- 数字：深蓝灰 + 初音绿点缀 ---------- */
+:root[data-skin="snowmiku"] .an-hero__price strong,
+:root[data-skin="snowmiku"] .an-lead__num {
+  font-weight: 700;
+  letter-spacing: -.4px;
+}
+
+/* ---------- 底栏：冰面 ---------- */
+:root[data-skin="snowmiku"] .tabbar {
+  background: linear-gradient(0deg, #FFFFFF 0%, #EDF9FF 100%);
+  border-top: 1px solid rgba(57, 197, 187, .34);
+  box-shadow: 0 -2px 14px -8px rgba(43, 108, 130, .40);
+}
+:root[data-skin="snowmiku"] .tabbar__item.is-active::before {
+  background: rgba(57, 197, 187, .17);
+  box-shadow: inset 0 0 0 1px rgba(57, 197, 187, .45);
+}
+:root[data-skin="snowmiku"] .tabbar__item.is-active svg { color: #2FB3A9; }
+:root[data-skin="snowmiku"] .tabbar__item.is-active > span {
+  color: #1B7E77;
+  font-weight: 700;
+}
+
+/* ---------- 页面内 tab：雪片按钮 ---------- */
+:root[data-skin="snowmiku"] .an-tabs {
+  background: rgba(255, 255, 255, .7);
+  border: 1px solid rgba(57, 197, 187, .26);
+}
+:root[data-skin="snowmiku"] .an-tab.is-active {
+  background: #FFFFFF;
+  color: #1B7E77;
+  box-shadow: 0 1px 6px -3px rgba(43, 108, 130, .45), inset 0 0 0 1px rgba(57, 197, 187, .42);
+  font-weight: 700;
+}
+
+/* ---------- 空态：把她放大放在中间 ---------- */
+:root[data-skin="snowmiku"] .board__empty::before,
+:root[data-skin="snowmiku"] .an-empty::before {
+  content: "";
+  display: block;
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 12px;
+  /* 原样式是多重 radial-gradient 画的猫脸，background 简写会整体覆盖掉；
+     尺寸仍要被这里的 100px 接管，不能沿用 84px */
+  background: var(--empty-art) center / cover no-repeat;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px rgba(57, 197, 187, .30),
+    0 12px 26px -16px rgba(43, 108, 130, .65);
+}
+
+
+/* ============================================================
+   雪初音 · 夜
+   ------------------------------------------------------------
+   不是把昼版简单反色。雪夜是「深夜的雪」：深蓝墨底、卡片像结了霜的
+   玻璃、初音绿提亮一档当发光点，雪点比昼版更亮。卡片渐变与顶栏/底栏
+   在昼版里是硬编码的浅色，这里必须逐条覆盖，只改变量会漏。
+   ============================================================ */
+:root[data-skin="snowmiku"][data-theme="dark"] {
+  --bg: #0A1A24;
+  --bg-deep: #06121B;
+  --bg-elev: #142B38;
+  --bg-elev-2: #102431;
+  --bg-elev-3: #1B3644;
+  --bg-veil: rgba(10, 26, 36, .93);
+  --bg-mask: rgba(0, 0, 0, .60);
+  --bg-skel: #16303E;
+
+  --text: #E8F7FB;
+  --text-2: #A9CBD6;
+  --text-3: #8FB2C0;
+
+  --line: rgba(120, 220, 220, .22);
+  --line-strong: rgba(120, 220, 220, .42);
+
+  --up: #FF5C7A;
+  --down: #35D6A4;
+  --flat: #7F9BA8;
+  --up-bg: rgba(255, 92, 122, .14);
+  --down-bg: rgba(53, 214, 164, .14);
+
+  --accent: #5FE0D5;
+  --accent-2: #9BF3EC;
+  --accent-ink: #08202A;
+  --accent-weak: rgba(95, 224, 213, .17);
+  --accent-3: #6FB2E8;
+  --accent-3-weak: rgba(111, 178, 232, .16);
+  --lit: #F0C664;
+  --warn: #F0A85C;
+  --warn-bg: rgba(240, 168, 92, .14);
+
+  --chart-grid: rgba(120, 220, 220, .16);
+  --chart-axis: #8FB2C0;
+  --chart-ma5: #F0C664;
+  --chart-ma10: #6FB2E8;
+  --chart-ma20: #B49BE8;
+
+  --card-grad: linear-gradient(168deg, #17313F 0%, #122935 62%, #0E2430 100%);
+  --card-grad-2: linear-gradient(168deg, #16303E 0%, #102532 100%);
+  --card-grad-3: linear-gradient(160deg, rgba(95, 224, 213, .10), rgba(111, 178, 232, .08));
+  --deco-1: rgba(95, 224, 213, .16);
+  --deco-2: rgba(111, 178, 232, .16);
+  --paw: #5FE0D5;
+  --star: rgba(95, 224, 213, .12);
+  --petal: rgba(155, 243, 236, .45);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .30), 0 12px 26px -16px rgba(0, 0, 0, .85);
+  --shadow-soft: 0 2px 8px -5px rgba(0, 0, 0, .80);
+  --shadow-pop: 0 16px 40px -18px rgba(0, 0, 0, .90);
+  --hl: inset 0 1px 0 rgba(255, 255, 255, .07);
+
+  color-scheme: dark;
+}
+
+:root[data-skin="snowmiku"][data-theme="dark"] body {
+  background-image:
+    radial-gradient(120% 60% at 50% -12%, rgba(36, 84, 108, .55), transparent 62%),
+    radial-gradient(90% 50% at 100% 0%, rgba(57, 197, 187, .14), transparent 58%),
+    radial-gradient(circle, rgba(138, 230, 224, .20) 1px, transparent 1.1px),
+    radial-gradient(circle, rgba(111, 198, 232, .14) 1px, transparent 1.1px);
+  background-size: 100% 100%, 100% 100%, 26px 26px, 46px 46px;
+  background-position: 0 0, 0 0, 0 0, 13px 23px;
+}
+
+:root[data-skin="snowmiku"][data-theme="dark"] .topbar {
+  background: linear-gradient(180deg, #17313F 0%, #0E2430 100%);
+  border-bottom-color: rgba(95, 224, 213, .34);
+  box-shadow: 0 2px 14px -8px rgba(0, 0, 0, .85);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .tabbar {
+  background: linear-gradient(0deg, #17313F 0%, #0E2430 100%);
+  border-top-color: rgba(95, 224, 213, .34);
+  box-shadow: 0 -2px 14px -8px rgba(0, 0, 0, .80);
+}
+
+:root[data-skin="snowmiku"][data-theme="dark"] .row,
+:root[data-skin="snowmiku"][data-theme="dark"] .icard,
+:root[data-skin="snowmiku"][data-theme="dark"] .an-card,
+:root[data-skin="snowmiku"][data-theme="dark"] .setgroup {
+  border-color: rgba(120, 220, 220, .26);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .row::after,
+:root[data-skin="snowmiku"][data-theme="dark"] .icard::after { opacity: .30; }
+
+:root[data-skin="snowmiku"][data-theme="dark"] .tabbar__item.is-active::before {
+  background: rgba(95, 224, 213, .20);
+  box-shadow: inset 0 0 0 1px rgba(95, 224, 213, .46);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .tabbar__item.is-active svg { color: #5FE0D5; }
+:root[data-skin="snowmiku"][data-theme="dark"] .tabbar__item.is-active > span { color: #A8F2EA; }
+
+:root[data-skin="snowmiku"][data-theme="dark"] .an-tabs {
+  background: rgba(20, 43, 56, .72);
+  border-color: rgba(120, 220, 220, .26);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .an-tab.is-active {
+  background: #1C3A4A;
+  color: #A8F2EA;
+  box-shadow: 0 1px 6px -3px rgba(0, 0, 0, .85), inset 0 0 0 1px rgba(95, 224, 213, .42);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .topbar h1::before {
+  box-shadow:
+    0 0 0 1.5px rgba(95, 224, 213, .62),
+    0 0 14px rgba(95, 224, 213, .42);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .board__empty::before,
+:root[data-skin="snowmiku"][data-theme="dark"] .an-empty::before {
+  box-shadow:
+    0 0 0 2px rgba(95, 224, 213, .38),
+    0 16px 30px -18px rgba(0, 0, 0, .90);
+}
+
+
+/* ============================================================
+   动态背景 —— 极光 + 飘雪
+   ------------------------------------------------------------
+   分两层，都只用 transform / opacity，交移动端 GPU 合成，
+   不碰 background-position（那会每帧重绘整屏）。
+
+   极光直接复用 body::before —— 它本来就是「顶光 + 侧光」的装饰层，
+   覆盖它的渐变比新增一个 DOM 层更省。inset 取负值让图层比视口大
+   一圈，位移时才不会露出边缘。
+   飘雪复用 .petals 容器，把花瓣换成雪结晶（mask 控形状、颜色分离，
+   昼版淡青、夜版近白）。
+   ============================================================ */
+
+:root[data-skin="snowmiku"] body::before {
+  inset: -12%;
+  background:
+    radial-gradient(46vmax 30vmax at 26% -8%, rgba(57, 197, 187, .30), transparent 66%),
+    radial-gradient(40vmax 32vmax at 88% 6%, rgba(111, 178, 232, .28), transparent 64%),
+    radial-gradient(30vmax 24vmax at 56% 48%, rgba(155, 243, 236, .15), transparent 72%);
+  animation: auroraDrift 28s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+/* 三段折返，比两端往返更像自然光在动 */
+@keyframes auroraDrift {
+  0%   { transform: translate3d(-2.4%, -1.2%, 0) scale(1);    opacity: .68; }
+  38%  { transform: translate3d(1.2%, 1.8%, 0) scale(1.07);   opacity: 1; }
+  70%  { transform: translate3d(2.8%, -.6%, 0) scale(1.04);   opacity: .84; }
+  100% { transform: translate3d(.4%, 2.2%, 0) scale(1.09);    opacity: .92; }
+}
+
+/* ---------- 飘雪：把花瓣换成雪结晶 ---------- */
+:root[data-skin="snowmiku"] .petals { top: 58px; }
+
+:root[data-skin="snowmiku"] .petals i {
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
+  background-color: rgba(122, 214, 226, .72);
+  -webkit-mask: var(--snowflake) center / contain no-repeat;
+  mask: var(--snowflake) center / contain no-repeat;
+  animation-name: snowFall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@keyframes snowFall {
+  0%   { opacity: 0;   transform: translate3d(0, -8vh, 0) rotate(0deg); }
+  9%   { opacity: .85; }
+  46%  { transform: translate3d(20px, 52vh, 0) rotate(170deg); }
+  80%  { opacity: .50; }
+  100% { opacity: 0;   transform: translate3d(-14px, 106vh, 0) rotate(350deg); }
+}
+
+/* 七片：位置、快慢、大小都错开，避免看出同一个节奏 */
+:root[data-skin="snowmiku"] .petals i:nth-child(1) {
+  left: 7%;  width: 13px; height: 13px; animation-duration: 28s; animation-delay: -3s;  opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(2) {
+  left: 24%; width: 9px;  height: 9px;  animation-duration: 36s; animation-delay: -19s; opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(3) {
+  left: 41%; width: 12px; height: 12px; animation-duration: 31s; animation-delay: -11s; opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(4) {
+  left: 58%; width: 8px;  height: 8px;  animation-duration: 42s; animation-delay: -27s; opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(5) {
+  left: 73%; width: 14px; height: 14px; animation-duration: 34s; animation-delay: -7s;  opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(6) {
+  left: 88%; width: 10px; height: 10px; animation-duration: 39s; animation-delay: -23s; opacity: 0;
+}
+:root[data-skin="snowmiku"] .petals i:nth-child(7) {
+  left: 50%; width: 7px;  height: 7px;  animation-duration: 46s; animation-delay: -33s; opacity: 0;
+}
+
+/* ---------- 夜：极光偏冷、雪花更亮 ---------- */
+:root[data-skin="snowmiku"][data-theme="dark"] body::before {
+  background:
+    radial-gradient(50vmax 26vmax at 22% -8%, rgba(57, 197, 187, .26), transparent 68%),
+    radial-gradient(42vmax 30vmax at 86% 4%, rgba(92, 142, 226, .28), transparent 66%),
+    radial-gradient(30vmax 22vmax at 58% 56%, rgba(120, 226, 214, .14), transparent 74%);
+}
+:root[data-skin="snowmiku"][data-theme="dark"] .petals i {
+  background-color: rgba(214, 246, 253, .88);
+}
+
+/* 尊重系统的「减少动态效果」：极光停下、雪片不飘 */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin="snowmiku"] body::before { animation: none; }
+  :root[data-skin="snowmiku"] .petals i { display: none; }
+}
+
+
+/* ============================================================
+   背景里的她
+   ------------------------------------------------------------
+   不抠图。这张从原图裁的是「头顶到胸口」，背景本身就是虚化雪景，
+   再叠一层径向柔化，边缘完全化进底色，看不出任何矩形边界。
+
+   真正让它「融入」的是混合模式，不是透明度：
+     昼版 multiply —— 白 (255) 乘任何底色还是底色，所以她的白发与
+       雪景背景自动消失，只剩眼睛、发丝阴影、衣褶这些深色，像印在纸上；
+     夜版 screen  —— 黑 (0) 加任何底色还是底色，只剩亮部，像月光下的她。
+   这比 AI 抠图干净得多：抠图会把她的白外套一起吃掉，混合模式不需要
+   知道哪里是背景。
+
+   z-index 2 让它落在内容之上（卡片是实色，放下面会被整片盖住），
+   但底栏留出 74px 避让，mask 在下方渐隐，不压导航。
+   试过全身立绘：生图模型把「透明背景」画成了棋盘格，反向抠图两次
+   都伤到人物，遂放弃，改用这张真实雪景裁切。
+   ============================================================ */
+.miku-bg { display: none; }
+
+:root[data-skin="snowmiku"] .miku-bg {
+  display: block;
+  position: fixed;
+  right: -16%;
+  bottom: 70px;
+  width: min(96vw, 400px);
+  aspect-ratio: 1 / 1;
+  z-index: 2;
+  pointer-events: none;
+  background: url("../assets/miku/scene.webp") center / cover no-repeat;
+  -webkit-mask-image: radial-gradient(circle at 50% 40%, #000 32%, rgba(0, 0, 0, .52) 50%, transparent 71%);
+  mask-image: radial-gradient(circle at 50% 40%, #000 32%, rgba(0, 0, 0, .52) 50%, transparent 71%);
+  mix-blend-mode: multiply;
+  opacity: .24;
+  animation: mikuBreathe 21s ease-in-out infinite alternate;
+}
+
+/* 很慢的呼吸，节奏与极光（28s）错开，避免整屏一起动 */
+@keyframes mikuBreathe {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-1.6%, -1.4%, 0) scale(1.04); }
+}
+
+/* 夜版：screen 只留亮部，像月光落在屏幕上 */
+:root[data-skin="snowmiku"][data-theme="dark"] .miku-bg {
+  mix-blend-mode: screen;
+  /* screen 会把整块底色提亮，夜版必须比昼版淡得多：
+     0.18 时下半屏已经灰成一片，0.11 才只剩她要的轮廓 */
+  opacity: .14;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin="snowmiku"] .miku-bg { animation: none; }
+}

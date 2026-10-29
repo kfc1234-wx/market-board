@@ -15,10 +15,10 @@
  */
 
 /** 界面显示用（顶栏胶囊、设置页「关于」） */
-self.__APP_VERSION__ = 'v1.31.0';
+self.__APP_VERSION__ = 'v1.40.0';
 
 /** Service Worker 缓存名用；变化即触发预缓存重建。与上面保持同值，避免两处对不上 */
-self.__APP_CACHE__ = 'v1.31.0';
+self.__APP_CACHE__ = 'v1.40.0';
 
 // Service Worker 里没有 document（importScripts 环境），跳过
 if (typeof document !== 'undefined') {

@@ -255,10 +255,37 @@ a { color: var(--accent); text-decoration: none; }
   box-shadow: var(--shadow-pop);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   backdrop-filter: blur(22px) saturate(160%);
+
+  /* 横向滚动：8 项不再压缩，滑着看。
+     overscroll-behavior-x 防止滑到尽头时把整页带着动，
+     scroll-snap 让停下时总有一项对齐，不会半截卡在边上。 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+
+  /* 两端渐隐，明确告诉用户「这边还有内容，可以横着滑」。
+     单纯把第 6 项裁一半，静态看很像布局坏了。宽度由 JS 按滚动位置改：
+     已到尽头的一侧收成 0，不再做无意义的淡出。 */
+  --tab-fade-l: 0px;
+  --tab-fade-r: 20px;
+  -webkit-mask-image: linear-gradient(90deg,
+      transparent 0, #000 var(--tab-fade-l),
+      #000 calc(100% - var(--tab-fade-r)), transparent 100%);
+  mask-image: linear-gradient(90deg,
+      transparent 0, #000 var(--tab-fade-l),
+      #000 calc(100% - var(--tab-fade-r)), transparent 100%);
 }
+.tabbar::-webkit-scrollbar { display: none; }
 .tabbar__item {
   position: relative;
-  flex: 1 1 0;
+  flex: 0 0 auto;
+  min-width: 62px;
+  scroll-snap-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -2951,7 +2951,7 @@
   margin: var(--sp-3) 0 0;
   font-size: 10.5px;
   line-height: 1.65;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* 状态胶囊 */
@@ -2971,139 +2971,280 @@
 .an-pill.is-up { background: var(--up-bg); color: var(--up); }
 .an-pill.is-down { background: var(--down-bg); color: var(--down); }
 
-/* 三因子行 */
-.an-row { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
-.an-row:first-of-type { border-top: 0; padding-top: 0; }
-.an-row:last-of-type { padding-bottom: 0; }
-.an-row__icon {
-  flex: none;
-  width: 24px; height: 24px;
-  margin-top: 1px;
-  border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600;
-}
-.an-row__icon--dir { background: var(--accent-weak); color: var(--accent); }
-.an-row__icon--vol { background: var(--tag-etf-bg); color: var(--tag-etf-fg); }
-.an-row__icon--prem { background: var(--warn-bg); color: var(--warn); }
-.an-row__body { flex: 1 1 auto; min-width: 0; }
-.an-row__title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.an-row__label { font-size: var(--fs-sm); font-weight: 500; color: var(--text); }
-.an-row__val { flex: none; font-family: var(--font-num); font-size: var(--fs-md); font-weight: 600; color: var(--text); }
-.an-row__sub { margin: 3px 0 0; font-size: 10.5px; line-height: 1.6; color: var(--text-3); }
-
-/* 三档赔率 */
-.an-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-2);
-  padding: var(--sp-3) 0;
-}
-.an-kpi { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.an-kpi__val { font-family: var(--font-num); font-size: 20px; font-weight: 600; }
-.an-kpi__label { font-size: 10.5px; color: var(--text-3); }
-
-/* 元指标 */
-.an-metas {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--sp-2);
-  padding-top: var(--sp-3);
-  border-top: 1px solid var(--line);
-}
-.an-meta { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
-.an-meta__val {
-  font-family: var(--font-num);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.an-meta__val.is-warn { color: var(--warn); }
-.an-meta__label { font-size: 10px; color: var(--text-3); white-space: nowrap; }
-
-/* 偏强/偏弱徽标 */
-.an-stance {
+/* 信号标签 */
+.an-tag {
   flex: none;
   padding: 3px 9px;
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
+  background: var(--bg-elev-2);
+  color: var(--text-3);
 }
-.an-stance.is-up { background: var(--up-bg); color: var(--up); }
-.an-stance.is-down { background: var(--down-bg); color: var(--down); }
-.an-stance.is-flat { background: var(--bg-elev-2); color: var(--text-3); }
+.an-tag.is-ok { background: var(--up-bg); color: var(--up); }
 
-/* 建议窗口：用左边框做标记，比塞一个方块图标更安静 */
-.an-window {
-  display: flex; align-items: center;
-  margin-top: var(--sp-3);
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border-left: 2px solid var(--warn);
-  background: var(--warn-bg);
-  font-size: 11px;
+/* 一句话结论 */
+.an-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 0 var(--sp-4);
+}
+.an-lead__cap {
+  margin: 0;
+  font-size: 11.5px;
   line-height: 1.5;
-  color: var(--warn);
+  color: var(--text-3);
+}
+.an-lead__row { display: flex; align-items: baseline; gap: 8px; }
+.an-lead__num {
+  font-family: var(--font-num);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.an-lead__unit { font-size: 13px; color: var(--text-2); }
+.an-lead__sub {
+  margin: 1px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+.an-lead__sub em { font-style: normal; font-weight: 600; }
+
+/* 三档分布：细线 10~90%，粗条 25~75%，竖线中位，灰线是 0 */
+.an-bars { display: flex; flex-direction: column; gap: 14px; }
+.an-bar { display: flex; flex-direction: column; gap: 5px; }
+.an-bar.is-weak { opacity: .55; }
+.an-bar--legend .an-bar__top { padding-bottom: 1px; }
+.an-bar--legend .an-bar__up,
+.an-bar--legend .an-bar__v {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.an-bar__top { display: flex; align-items: baseline; gap: 8px; }
+.an-bar__k {
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  width: 46px;
+}
+.an-track { position: relative; height: 18px; }
+.an-track__bed {
+  position: absolute; left: 0; right: 0; top: 8px; height: 2px;
+  background: var(--bg-elev-2);
+  border-radius: 1px;
+}
+.an-track__zero {
+  position: absolute; top: -2px; bottom: -2px; width: 1px;
+  background: var(--line-strong);
+  transform: translateX(-.5px);
+}
+/* 10~90% 的细线。
+   原来用 --line-strong（11.5% 白），在深色底上几乎看不见，
+   只有抗锯齿后的端点显出一个孤零零的小点，容易被读成"异常标记"。
+   换成 --text-3 并在两端加短竖线当端帽，读起来才是"范围"。 */
+.an-track__range {
+  position: absolute; top: 9px; height: 2px;
+  background: var(--text-3);
+  border-radius: 1px;
+}
+.an-track__range::before,
+.an-track__range::after {
+  content: '';
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  background: inherit;
+}
+.an-track__range::before { left: 0; }
+.an-track__range::after { right: 0; }
+.an-track__box {
+  position: absolute; top: 5px; height: 10px;
+  border-radius: 3px;
+}
+.an-track__box.is-up { background: var(--up-bg); border: 1px solid var(--up); }
+.an-track__box.is-down { background: var(--down-bg); border: 1px solid var(--down); }
+.an-track__med {
+  position: absolute; top: 2px; height: 14px; width: 1.5px;
+  background: var(--text);
+  border-radius: 1px;
+  transform: translateX(-.75px);
+}
+.an-bar__up {
+  margin-left: 6px;
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.an-bar__v {
+  margin-left: auto;
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.an-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
-/* 四象限表 */
-.an-qtrs { display: flex; flex-direction: column; }
-.an-qtr {
+/* 相似日明细 */
+.an-sims { display: flex; flex-direction: column; }
+.an-sim { padding: 9px 0; border-top: 1px solid var(--line); }
+.an-sim:first-child { border-top: 0; padding-top: 0; }
+.an-sim__main { display: flex; align-items: baseline; gap: 10px; }
+.an-sim__date {
+  width: 44px;
+  font-family: var(--font-num);
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.an-sim__pct {
+  width: 56px;
+  font-family: var(--font-num);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.an-sim__fwd {
+  margin-left: auto;
+  font-family: var(--font-num);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.an-sim__sub {
+  display: flex;
+  gap: 6px;
+  margin: 3px 0 0 54px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.an-more {
+  width: 100%;
+  margin-top: var(--sp-3);
+  padding: 9px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev-2);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* 四象限参照 */
+.an-qts { display: flex; flex-direction: column; margin-top: -4px; }
+.an-qt {
   display: grid;
-  grid-template-columns: 96px repeat(3, minmax(0, 1fr)) 42px 40px;
+  grid-template-columns: 1fr 54px 54px 36px;
   align-items: center;
   gap: 4px;
-  padding: 7px 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.an-qt--head {
+  border-top: 0;
+  padding-bottom: 5px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.an-qt--head span:not(:first-child) { text-align: right; }
+/* 高亮行只用背景，不加负 margin —— 加了会让整块比卡片宽 16px，横向溢出 */
+.an-qt.is-cur {
   border-radius: 8px;
+  background: var(--accent-weak);
+  box-shadow: 0 0 0 7px var(--accent-weak);
+}
+.an-qt__name { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.an-qt__name em {
+  font-style: normal;
   font-family: var(--font-num);
+  font-size: 10px;
+  color: var(--text-3);
+}
+.an-qt__name i {
+  font-style: normal;
   font-size: 11.5px;
   color: var(--text-2);
-  text-align: right;
-}
-.an-qtr--head {
-  padding-top: 0;
-  padding-bottom: 6px;
-  font-family: var(--font-sans);
-  font-size: 10px;
-  color: var(--text-3);
-}
-.an-qtr.is-cur { background: var(--accent-weak); color: var(--text); font-weight: 600; }
-.an-qtr__name {
-  display: flex; align-items: center; gap: 5px;
-  text-align: left;
-  overflow: hidden;
-}
-.an-qtr__name em {
-  flex: none;
-  font-style: normal;
-  font-weight: 600;
-  font-family: var(--font-num);
-  color: var(--text-3);
-}
-.an-qtr.is-cur .an-qtr__name em { color: var(--accent); }
-.an-qtr__name i {
-  font-style: normal;
-  font-family: var(--font-sans);
-  font-size: 10px;
-  color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.an-qtr.is-cur .an-qtr__name i { color: var(--text-2); }
-
-/* 模型判读 */
-.an-read {
-  margin: 0;
-  padding-left: 17px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+.an-qt.is-cur .an-qt__name em { color: var(--accent); }
+.an-qt.is-cur .an-qt__name i { color: var(--text); font-weight: 600; }
+.an-qt__up,
+.an-qt__med,
+.an-qt__n {
+  text-align: right;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
 }
-.an-read li { font-size: 11.5px; line-height: 1.7; color: var(--text-2); }
-.an-read li::marker { color: var(--text-3); font-family: var(--font-num); font-size: 10.5px; }
+.an-qt__n { font-size: 11px; color: var(--text-3); }
+
+/* 方法（默认收起） */
+.an-method { margin: 0 var(--gutter) var(--sp-3); }
+.an-method__sum {
+  padding: 11px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+}
+.an-method__sum::-webkit-details-marker { display: none; }
+.an-method__sum::after {
+  content: "＋";
+  float: right;
+  color: var(--text-3);
+  font-weight: 400;
+}
+.an-method[open] .an-method__sum::after { content: "－"; }
+.an-method[open] .an-method__sum { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.an-method__body {
+  padding: 12px 14px 4px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  background: var(--bg-elev);
+}
+.an-method__p {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.75;
+  color: var(--text-3);
+}
+.an-method__p--warn {
+  padding-left: 9px;
+  border-left: 2px solid var(--warn);
+  color: var(--text-2);
+}
+.an-cal {
+  display: grid;
+  grid-template-columns: 1fr 48px 48px 48px;
+  margin: 0 0 12px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.an-cal__row { display: contents; }
+.an-cal__row span {
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  text-align: right;
+  color: var(--text-2);
+}
+.an-cal__row span:first-child { text-align: left; color: var(--text-3); }
+.an-cal__row--head span { border-top: 0; color: var(--text-3); }
+
 
 /* 页脚说明 */
 .an-foot {
@@ -3113,8 +3254,12 @@
   flex-direction: column;
   gap: 7px;
 }
-.an-foot p { margin: 0; font-size: 10px; line-height: 1.65; color: var(--text-3); opacity: .85; }
+.an-foot p { margin: 0; font-size: 10px; line-height: 1.65; color: var(--text-2); opacity: .9; }
+.an-foot__warn { color: var(--warn) !important; opacity: 1 !important; }
 .an-foot .an-nb { white-space: nowrap; }
+
+/* 任意位置都可用：让日期、区间这类不能断的片段保持完整 */
+.an-nb { white-space: nowrap; }
 
 /* 空态与骨架 */
 .an-empty { margin: 56px var(--gutter) 0; text-align: center; }
@@ -3141,12 +3286,14 @@
  * 下限压到 8.5px 是给 320px 老机型留活路：那个宽度每格只有 35.75px，
  * 9.5px 下「行情分析」四个字要 38.3px，会真的被裁掉。
  */
-.tabbar { gap: 0; padding: 5px 4px; }
+.tabbar { gap: 2px; padding: 5px; }
 .tabbar__item {
-  font-size: clamp(8.5px, 2.55vw, 10.5px);
+  /* 底栏改成横向滚动之后，不必再为 8 项挤压而把字号压到 8.5px，
+     恢复常规字号；每项 62px 保证「行情分析」四个字不会被裁 */
+  font-size: 10.5px;
   letter-spacing: 0;
   gap: 2px;
 }
 .tabbar__item svg { width: 22px; height: 22px; }
-/* 激活底跟着格子走：固定 42px 在 43px 的格子上会溢到邻居身上 */
-.tabbar__item::before { width: calc(100% - 6px); }
+/* 药丸只裹图标，比格子窄一圈 */
+.tabbar__item::before { width: 46px; }

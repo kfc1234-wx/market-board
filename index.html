@@ -18,24 +18,47 @@
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/pages.css">
+<link rel="stylesheet" href="css/skin-manga.css">
+<link rel="stylesheet" href="css/skin-snowmiku.css">
+<script>
+  // 皮肤必须在样式之后、首屏之前定下来，否则会闪一下原版配色。
+  // 优先级：URL 预览参数 > 本机偏好 > 默认雪初音。
+  // classic 表示「不设 data-skin」，让 tokens.css 的原版变量生效。
+  (function () {
+    var s = new URLSearchParams(location.search).get('skin');
+    if (!s) {
+      try {
+        var p = (JSON.parse(localStorage.getItem('stk.watch.v1') || '{}').prefs) || {};
+        s = ('skin' in p && p.skin) ? p.skin : 'snowmiku';
+      } catch (e) { s = 'snowmiku'; }
+    }
+    if (s && s !== 'classic') document.documentElement.dataset.skin = s;
+  })();
+</script>
 <script src="version.js"></script>
 <script>
-  // 首屏前确定主题，避免白闪。默认深色；仅当用户显式选「浅色」或「跟随系统且系统为浅色」时才用浅色
+  // 首屏前确定明暗，避免白闪。
+  // 默认雪初音是雪白底，所以新装与「尚未写过 skin 的老数据」都先按浅色渲染，
+  // 与 store.js 的 migratePrefs() 保持一致；老数据启动后会正式迁移并落盘。
   (function () {
-    var theme = 'dark';
+    var theme = 'light';
     try {
       var raw = localStorage.getItem('stk.watch.v1');
-      var saved = raw ? (JSON.parse(raw).prefs || {}).theme : null;
-      if (saved === 'light') theme = 'light';
-      else if (saved === 'auto') {
-        theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      var p = raw ? (JSON.parse(raw).prefs || {}) : null;
+      if (p && 'skin' in p) {
+        if (p.theme === 'dark') theme = 'dark';
+        else if (p.theme === 'auto') {
+          theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
       }
-    } catch (e) { /* 忽略，保持深色 */ }
+    } catch (e) { /* 忽略，保持浅色 */ }
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
 </head>
 <body>
+
+<div class="miku-bg" aria-hidden="true"></div>
 
 <div class="app" id="app">
 
@@ -92,7 +115,7 @@
     <div class="scroll idxscroll" id="indices-list"></div>
   </section>
 
-  <!-- ======== 行情分析（三因子状态分型） ======== -->
+  <!-- ======== 行情分析（相似历史日匹配） ======== -->
   <section class="page" id="page-analysis" data-page="analysis" hidden>
     <header class="topbar">
       <div class="topbar__title">
@@ -188,35 +211,81 @@
   <!-- ======== 底部导航 ======== -->
   <nav class="tabbar" id="tabbar" aria-label="主导航">
     <button class="tabbar__item is-active" data-tab="board" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 20.5c-.47 0-.9-.16-1.27-.46C6 16.1 2.9 13.1 2.9 9.4c0-2.85 2.15-4.95 4.9-4.95 1.68 0 3.18.74 4.2 1.98 1.02-1.24 2.52-1.98 4.2-1.98 2.75 0 4.9 2.1 4.9 4.95 0 3.7-3.1 6.7-7.83 10.64-.37.3-.8.46-1.27.46z" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2.8v18.4M3.9 7.4l16.2 9.2M20.1 7.4L3.9 16.6"/>
+          <path d="M12 6.5l2.4-2M12 6.5L9.6 4.5M12 17.5l2.4 2M12 17.5l-2.4 2"/>
+          <path d="M7.2 9.7l-2.9-.4M7.2 9.7l-.6-2.9M16.8 14.3l2.9.4M16.8 14.3l.6 2.9"/>
+        </g>
+        <circle cx="12" cy="12" r="1.4" fill="currentColor"/>
+      </svg>
       <span>自选</span>
     </button>
     <button class="tabbar__item" data-tab="indices" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.4 17.4l4.85-5.75a1 1 0 0 1 1.53-.04l2.83 2.9a1 1 0 0 0 1.47-.06L19.4 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19.7" cy="8.1" r="2" fill="currentColor"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M3.2 18.2l4.6-5.3 3.3 2.6 4.6-6" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M19.2 5.6l2.4 2.8-2.4 2.8-2.4-2.8z" fill="currentColor"/>
+      </svg>
       <span>指数</span>
     </button>
     <button class="tabbar__item" data-tab="analysis" type="button">
-      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M12 3.4l7.6 13.2H4.4L12 3.4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12.1" r="3.3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M12 3.1l7.5 4.3v9.2L12 20.9l-7.5-4.3V7.4z" fill="none"
+              stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        <path d="M12 8.3v4.1l2.7 1.7" fill="none" stroke="currentColor"
+              stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
       <span>行情分析</span>
     </button>
     <button class="tabbar__item" data-tab="bonds" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4.2 19.2v-4.6M9.4 19.2v-7.6M14.6 19.2v-5.4M19.8 19.2V6.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M3.4 19.6h17.2" fill="none" stroke="currentColor"
+              stroke-width="1.7" stroke-linecap="round"/>
+        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2">
+          <path d="M6.6 19.6v-5.6M12 19.6v-9.4M17.4 19.6v-7.2"/>
+        </g>
+        <g fill="currentColor">
+          <circle cx="6.6" cy="12.6" r="1.25"/><circle cx="12" cy="8.8" r="1.25"/><circle cx="17.4" cy="11" r="1.25"/>
+        </g>
+      </svg>
       <span>国债</span>
     </button>
     <button class="tabbar__item" data-tab="nteam" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.8l7.4 3v5.4c0 4.6-3.1 8.3-7.4 10-4.3-1.7-7.4-5.4-7.4-10V5.8l7.4-3z" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linejoin="round"/><path d="M8.9 12l2.2 2.2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M12 2.8l7.4 3v5.4c0 4.6-3.1 8.3-7.4 10-4.3-1.7-7.4-5.4-7.4-10V5.8z" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M12 8.7v6.6M9.1 10.4l5.8 3.2M14.9 10.4l-5.8 3.2" fill="none"
+              stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+      </svg>
       <span>国家队</span>
     </button>
     <button class="tabbar__item" data-tab="hao" type="button">
-      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M12 3.2l2.62 5.46 5.98.83-4.36 4.2 1.05 5.98L12 16.85l-5.29 2.82 1.05-5.98-4.36-4.2 5.98-.83L12 3.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M10.6 3.6c.5 4.1 1.9 5.5 6 6-4.1.5-5.5 1.9-6 6-.5-4.1-1.9-5.5-6-6 4.1-.5 5.5-1.9 6-6z"
+              fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/>
+        <path d="M17.3 14.9c.2 1.7.8 2.3 2.5 2.5-1.7.2-2.3.8-2.5 2.5-.2-1.7-.8-2.3-2.5-2.5 1.7-.2 2.3-.8 2.5-2.5z"
+              fill="currentColor"/>
+      </svg>
       <span>好人好股</span>
     </button>
     <button class="tabbar__item" data-tab="search" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" fill="none" stroke="currentColor" stroke-width="2.05"/><path d="M15.8 15.8l4.9 4.9" fill="none" stroke="currentColor" stroke-width="2.05" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <circle cx="10.6" cy="10.6" r="6.8" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M15.7 15.7l4.7 4.7" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round"/>
+        <path d="M10.6 7.3v6.6M8.1 8.8l5 3.3M13.1 8.8l-5 3.3" fill="none"
+              stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+      </svg>
       <span>搜索</span>
     </button>
     <button class="tabbar__item" data-tab="settings" type="button">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><ellipse cx="12" cy="16.4" rx="5.4" ry="4.4" fill="currentColor"/><ellipse cx="5.8" cy="11" rx="2.15" ry="2.55" fill="currentColor"/><ellipse cx="10.05" cy="7" rx="2.15" ry="2.65" fill="currentColor"/><ellipse cx="13.95" cy="7" rx="2.15" ry="2.65" fill="currentColor"/><ellipse cx="18.2" cy="11" rx="2.15" ry="2.55" fill="currentColor"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M12 2.9v3.1M12 18v3.1M4.7 7.5l2.7 1.6M16.6 14.9l2.7 1.6M4.7 16.5l2.7-1.6M16.6 9.1l2.7-1.6"/>
+        </g>
+      </svg>
       <span>设置</span>
     </button>
   </nav>

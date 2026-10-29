@@ -1,20 +1,24 @@
-/** 应用入口 */
+/**
+ * 应用入口
+ *
+ * 页面模块按需加载：首屏只有看板是必需的，其余七个页面（含详情页与图表）
+ * 第一次点进去才下载。实测首屏 600KB → 约 400KB，代价是切 tab 时多一次
+ * 模块请求（本地 ~10ms，线上 gzip 后更小）。
+ *
+ * 两条约束写在这里，免得后来者踩：
+ *  1. 懒加载之后 switchTab 是异步的。await 回来必须先确认 currentTab 还是
+ *     原来那个，否则用户连点两个 tab 会让上一页的轮询在后台空转。
+ *  2. 主题切换、__app 调试入口都要按「可能还没加载」来写，不能假定实例存在。
+ */
 
 import { qs } from './util/dom.js';
-import { initStore, applyTheme, getPrefs, setPref, subscribe, restoreDefaultItems } from './core/store.js';
+import { initStore, applyTheme, applySkin, getPrefs, setPref, subscribe, restoreDefaultItems } from './core/store.js';
 import { createRouter } from './core/router.js';
 import { Board } from './ui/board.js';
-import { Indices } from './ui/indices.js';
-import { Analysis } from './ui/analysis.js';
-import { Bonds } from './ui/bonds.js';
-import { NTeam } from './ui/nteam.js';
-import { Hao } from './ui/hao.js';
-import { Detail } from './ui/detail.js';
 import { initSearch } from './ui/search.js';
 import { initSettings } from './ui/settings.js';
 import { createPullRefresh } from './ui/pullRefresh.js';
 import { toast } from './ui/toast.js';
-import { runSelfTest, showSelfTestPanel } from './dev/selftest.js';
 import { GBK_SUPPORTED } from './data/http.js';
 
 const pages = {
@@ -32,14 +36,54 @@ const TAB_NAMES = ['board', 'indices', 'analysis', 'bonds', 'nteam', 'hao', 'sea
 
 let currentTab = 'board';
 
+/**
+ * 底栏可横向滚动之后，选中的那一项要自动滑到中间，
+ * 否则从路由切到靠后的页面时（比如设置），用户看不到选中态。
+ * 用 offsetLeft 算而不是 scrollIntoView：后者会连带竖直方向一起滚。
+ */
+function revealTab(name) {
+  const bar = document.querySelector('.tabbar');
+  const btn = bar && bar.querySelector(`.tabbar__item[data-tab="${name}"]`);
+  if (!bar || !btn) return;
+  if (bar.scrollWidth <= bar.clientWidth + 1) return;   // 不用滚就别动
+  const left = btn.offsetLeft - (bar.clientWidth - btn.offsetWidth) / 2;
+  bar.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+}
+
+/**
+ * 底栏两端渐隐：按当前滚动位置决定哪一侧该淡出。
+ * 到尽头的一侧收成 0px，否则明明滑到底了还把最后一项弄淡，反而像残缺。
+ */
+function syncTabFade() {
+  const bar = document.querySelector('.tabbar');
+  if (!bar) return;
+  const max = bar.scrollWidth - bar.clientWidth;
+  if (max <= 1) {
+    bar.style.setProperty('--tab-fade-l', '0px');
+    bar.style.setProperty('--tab-fade-r', '0px');
+    return;
+  }
+  const x = bar.scrollLeft;
+  bar.style.setProperty('--tab-fade-l', x > 4 ? '16px' : '0px');
+  bar.style.setProperty('--tab-fade-r', x < max - 4 ? '20px' : '0px');
+}
+
 const boot = () => {
   initStore();
   applyTheme();
+  applySkin();   // 首屏脚本已经设过一次，这里再对一次，顺带落盘老数据的迁移结果
+
+  const tabbar = qs('#tabbar');
+  if (tabbar) {
+    tabbar.addEventListener('scroll', syncTabFade, { passive: true });
+    window.addEventListener('resize', syncTabFade, { passive: true });
+    syncTabFade();
+  }
   subscribe((type) => {
     if (type === 'prefs') { /* 由调用方处理 */ }
   });
 
-  // ---------- 看板 ----------
+  // ---------- 看板（首屏唯一常驻模块） ----------
   const board = new Board({
     listEl: qs('#board-list'),
     emptyEl: qs('#board-empty'),
@@ -51,53 +95,7 @@ const boot = () => {
     onAdd: () => router.go('/search'),
   });
 
-  // ---------- 指数 ----------
-  const indices = new Indices({
-    listEl: qs('#indices-list'),
-    statusEl: qs('#indices-status'),
-    onOpen: id => router.go('/s/' + id),
-  });
-
-  // ---------- 行情分析 ----------
-  const analysis = new Analysis({
-    bodyEl: qs('#analysis-body'),
-    statusEl: qs('#analysis-status'),
-  });
-
-  // ---------- 国债 ----------
-  const bonds = new Bonds({
-    bodyEl: qs('#bonds-body'),
-    statusEl: qs('#bonds-status'),
-  });
-
-  // ---------- 国家队 ----------
-  const nteam = new NTeam({
-    listEl: qs('#nteam-list'),
-    summaryEl: qs('#nteam-sum'),
-    volVal: qs('#nteam-vol'),
-    volNote: qs('#nteam-volnote'),
-    flowVal: qs('#nteam-flow'),
-    flowNote: qs('#nteam-flownote'),
-    statusEl: qs('#nteam-status'),
-    editBtn: qs('#nteam-edit'),
-    onOpen: id => router.go('/s/' + id),
-    onAdd: () => router.go('/search'),
-  });
-
-  // ---------- 好人好股 ----------
-  const hao = new Hao({
-    listEl: qs('#hao-list'),
-    statusEl: qs('#hao-status'),
-    onOpen: id => router.go('/s/' + id),
-  });
-
-  // ---------- 详情 ----------
-  const detail = new Detail({
-    root: pages.detail || qs('#page-detail'),
-    onBack: () => router.go('/' + currentTab),
-  });
-
-  // ---------- 搜索 ----------
+  // ---------- 搜索（小、且要即时响应输入） ----------
   const search = initSearch({
     input: qs('#search-input'),
     body: qs('#search-body'),
@@ -114,24 +112,129 @@ const boot = () => {
     body: qs('#settings-body'),
     onThemeChange: () => {
       board.paint();
-      indices.repaint();
-      analysis.repaintTheme();
-      bonds.repaint();
-      detail.repaintTheme();
+      // 未加载的页面没有可重绘的内容，加载时会用当前主题新建，不必管
+      const d = registry.detail;
+      if (d && d.active) d.repaintTheme();
+      for (const name of ['indices', 'analysis', 'bonds']) {
+        const inst = registry[name];
+        if (!inst) continue;
+        if (typeof inst.repaintTheme === 'function') inst.repaintTheme();
+        else if (typeof inst.repaint === 'function') inst.repaint();
+      }
     },
   });
 
   // ---------- 路由 ----------
-  const router = createRouter(route => {
+  const router = createRouter(async route => {
     if (route.name === 'detail') {
-      detail.open(route.id);
+      const d = await ensure('detail');
+      if (d) d.open(route.id);
       return;
     }
-    if (detail.active) detail.hide();
+    const d = registry.detail;
+    if (d && d.active) d.hide();
     switchTab(route.name);
   }, TAB_NAMES);
 
-  const switchTab = name => {
+  /** name → 已创建的实例 */
+  const registry = Object.create(null);
+  /** name → 正在进行的加载 Promise（并发进入同一页时只下载一次） */
+  const pending = Object.create(null);
+
+  /**
+   * 每个懒加载页的加载方式与装配方式。
+   * status 用来在加载期间保持「连接中」；pull 是 [滚动容器, 指示器]。
+   */
+  const lazyDefs = {
+    indices: {
+      load: () => import('./ui/indices.js').then(m => m.Indices),
+      make: C => new C({
+        listEl: qs('#indices-list'),
+        statusEl: qs('#indices-status'),
+        onOpen: id => router.go('/s/' + id),
+      }),
+      pull: ['#indices-list', '#indices-pull'],
+    },
+    analysis: {
+      load: () => import('./ui/analysis.js').then(m => m.Analysis),
+      make: C => new C({
+        bodyEl: qs('#analysis-body'),
+        statusEl: qs('#analysis-status'),
+      }),
+      pull: ['#analysis-body', '#analysis-pull'],
+    },
+    bonds: {
+      load: () => import('./ui/bonds.js').then(m => m.Bonds),
+      make: C => new C({
+        bodyEl: qs('#bonds-body'),
+        statusEl: qs('#bonds-status'),
+      }),
+      pull: ['#bonds-body', '#bonds-pull'],
+    },
+    nteam: {
+      load: () => import('./ui/nteam.js').then(m => m.NTeam),
+      make: C => new C({
+        listEl: qs('#nteam-list'),
+        summaryEl: qs('#nteam-sum'),
+        volVal: qs('#nteam-vol'),
+        volNote: qs('#nteam-volnote'),
+        flowVal: qs('#nteam-flow'),
+        flowNote: qs('#nteam-flownote'),
+        statusEl: qs('#nteam-status'),
+        editBtn: qs('#nteam-edit'),
+        onOpen: id => router.go('/s/' + id),
+        onAdd: () => router.go('/search'),
+      }),
+      pull: ['#nteam-list', '#nteam-pull'],
+    },
+    hao: {
+      load: () => import('./ui/hao.js').then(m => m.Hao),
+      make: C => new C({
+        listEl: qs('#hao-list'),
+        statusEl: qs('#hao-status'),
+        onOpen: id => router.go('/s/' + id),
+      }),
+      pull: ['#hao-list', '#hao-pull'],
+    },
+    // 详情页连同 chart/kline.js、chart/trend.js 一共 67KB，只有点开个股才用得上
+    detail: {
+      load: () => import('./ui/detail.js').then(m => m.Detail),
+      make: C => new C({
+        root: qs('#page-detail'),
+        onBack: () => router.go('/' + currentTab),
+      }),
+    },
+  };
+
+  function ensure(name) {
+    if (registry[name]) return Promise.resolve(registry[name]);
+    if (pending[name]) return pending[name];
+    const def = lazyDefs[name];
+    if (!def) return Promise.resolve(null);
+
+    pending[name] = def.load()
+      .then(C => def.make(C))
+      .then(inst => {
+        registry[name] = inst;
+        delete pending[name];
+        if (def.pull) {
+          createPullRefresh({
+            scroller: qs(def.pull[0]),
+            indicator: qs(def.pull[1]),
+            onRefresh: () => inst.refreshNow(),
+          });
+        }
+        return inst;
+      })
+      .catch(err => {
+        // 不缓存失败，下次进这个 tab 会重试
+        delete pending[name];
+        throw err;
+      });
+    return pending[name];
+  }
+
+  const switchTab = async name => {
     currentTab = name;
     setPref('lastTab', name);
 
@@ -141,27 +244,30 @@ const boot = () => {
     for (const btn of document.querySelectorAll('.tabbar__item')) {
       btn.classList.toggle('is-active', btn.dataset.tab === name);
     }
+    revealTab(name);
 
-    if (name === 'board') board.start();
-    else board.stop();
+    // 先把所有在跑的页面停掉，再启动当前页：
+    // 懒加载是异步的，不等它回来就启下一页，会出现两页同时轮询。
+    board.stop();
+    for (const key of Object.keys(registry)) {
+      const inst = registry[key];
+      if (inst && typeof inst.stop === 'function') inst.stop();
+    }
 
-    if (name === 'indices') indices.start();
-    else indices.stop();
+    if (name === 'settings') { settings.render(); return; }
+    if (name === 'search') { search.focus(); return; }
+    if (name === 'board') { board.start(); return; }
 
-    if (name === 'analysis') analysis.start();
-    else analysis.stop();
-
-    if (name === 'bonds') bonds.start();
-    else bonds.stop();
-
-    if (name === 'nteam') nteam.start();
-    else nteam.stop();
-
-    if (name === 'hao') hao.start();
-    else hao.stop();
-
-    if (name === 'settings') settings.render();
-    if (name === 'search') search.focus();
+    let inst;
+    try {
+      inst = await ensure(name);
+    } catch {
+      toast('页面加载失败，检查网络后再点一次', 2400);
+      return;
+    }
+    // 等模块这段时间里用户可能已经切走，别把上一页启动起来
+    if (currentTab !== name) return;
+    if (inst && typeof inst.start === 'function') inst.start();
   };
 
   // ---------- tabbar ----------
@@ -176,36 +282,11 @@ const boot = () => {
     toast(n ? `已恢复默认清单（${n} 个）` : '默认清单已在列表里');
   });
 
-  // ---------- 下拉刷新 ----------
+  // ---------- 下拉刷新（看板常驻，其余在 ensure 里绑定） ----------
   createPullRefresh({
     scroller: qs('#board-list'),
     indicator: qs('#pull-indicator'),
     onRefresh: () => board.refreshNow(),
-  });
-  createPullRefresh({
-    scroller: qs('#indices-list'),
-    indicator: qs('#indices-pull'),
-    onRefresh: () => indices.refreshNow(),
-  });
-  createPullRefresh({
-    scroller: qs('#analysis-body'),
-    indicator: qs('#analysis-pull'),
-    onRefresh: () => analysis.refreshNow(),
-  });
-  createPullRefresh({
-    scroller: qs('#bonds-body'),
-    indicator: qs('#bonds-pull'),
-    onRefresh: () => bonds.refreshNow(),
-  });
-  createPullRefresh({
-    scroller: qs('#nteam-list'),
-    indicator: qs('#nteam-pull'),
-    onRefresh: () => nteam.refreshNow(),
-  });
-  createPullRefresh({
-    scroller: qs('#hao-list'),
-    indicator: qs('#hao-pull'),
-    onRefresh: () => hao.refreshNow(),
   });
 
   // ---------- 排序按钮初始文案 ----------
@@ -229,20 +310,33 @@ const boot = () => {
     toast('当前浏览器不支持 GBK 解码，行情可能显示异常', 3000);
   }
 
-  // ---------- 自检 ----------
+  // ---------- 自检（只在 ?debug=1 时加载，省掉 8KB + 它拖的 39KB 代码表） ----------
   if (new URLSearchParams(location.search).get('debug') === '1') {
     setTimeout(async () => {
       toast('正在运行数据源自检…', 1200);
-      const results = await runSelfTest();
-      showSelfTestPanel(results);
+      const m = await import('./dev/selftest.js');
+      const results = await m.runSelfTest();
+      m.showSelfTestPanel(results);
     }, 600);
   }
 
   // ---------- PWA ----------
   registerSW();
 
-  // 调试用
-  window.__app = { board, indices, analysis, bonds, nteam, hao, detail, router };
+  /**
+   * 调试入口。
+   * 懒加载之后页面实例可能是 undefined，用 getter 让原有写法
+   * （__app.analysis.data 之类）在页面已打开时照旧可用。
+   */
+  window.__app = {
+    board, search, settings, router,
+    get indices() { return registry.indices; },
+    get analysis() { return registry.analysis; },
+    get bonds() { return registry.bonds; },
+    get nteam() { return registry.nteam; },
+    get hao() { return registry.hao; },
+    get detail() { return registry.detail; },
+  };
 };
 
 function registerSW() {
